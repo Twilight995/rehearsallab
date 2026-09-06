@@ -7,13 +7,33 @@ import 'package:rehearsallab/core/enum/retention_option.dart';
 import 'package:rehearsallab/core/enum/stage_state.dart';
 import 'package:rehearsallab/core/enum/transcript_state.dart';
 import 'package:rehearsallab/core/models/result.dart';
+import 'package:rehearsallab/models/presentation.dart';
 import 'package:rehearsallab/models/rehearsal.dart';
 import 'package:rehearsallab/models/report.dart';
+import 'package:rehearsallab/models/script_version.dart';
 import 'package:rehearsallab/services/mock/demo_data.dart';
 import 'package:rehearsallab/services/processing_pipeline_service.dart';
 import 'package:rehearsallab/services/report_interpret_service.dart';
 import 'package:rehearsallab/services/transcript_store_service.dart';
 import 'package:rehearsallab/services/transcription_service.dart';
+
+/// 해석 호출 시점에 시계를 앞으로 돌린 뒤 실패하는 Mock (단계 사이 경과 시간 재현).
+class _FailAfterAdvancing implements ReportInterpretService {
+  final void Function() advance;
+
+  const _FailAfterAdvancing(this.advance);
+
+  @override
+  Future<Result<AiFeedback>> interpret({
+    required Presentation presentation,
+    required ScriptVersion script,
+    required Transcript transcript,
+    required Report partialReport,
+  }) async {
+    advance();
+    return Failure(Exception('제공사 응답 시간 초과 (timeout 20초)'));
+  }
+}
 
 void main() {
   final fixedNow = DateTime(2026, 9, 9, 21, 16);
@@ -204,10 +224,137 @@ void main() {
     });
   });
 
-  group('AI 재시도 (P0-REV-05 전사문 경로)', () {
-    test('보관된 전사문으로 재시도 성공 → ai 채워짐', () async {
+  group('즉시 삭제 옵션 전사문 기한 (P0-REV-11)', () {
+    test('단계 사이에 시간이 흐르면 저장소 만료 = 화면 기한 = 최초 실패 + 24h', () async {
+      // 받아쓰기 21:16:00, AI 실패 21:16:20 → 기한은 21:16:20 + 24h 하나뿐이어야 한다.
+      var clock = DateTime(2026, 9, 9, 21, 16, 0);
+      final store = MemoryTranscriptStoreService();
+      final p = MockProcessingPipelineService(
+        stepDelay: Duration.zero,
+        transcription: const MockTranscriptionService(delay: Duration.zero),
+        interpret: _FailAfterAdvancing(
+          () => clock = clock.add(const Duration(seconds: 20)),
+        ),
+        transcriptStore: store,
+        now: () => clock,
+      );
+      final last = await runLast(p, retention: RetentionOption.immediate);
+      final deadline = DateTime(
+        2026,
+        9,
+        9,
+        21,
+        16,
+        20,
+      ).add(const Duration(hours: 24));
+      expect(last.rehearsal.firstFailureAt, DateTime(2026, 9, 9, 21, 16, 20));
+      expect(last.rehearsal.transcript?.retryDeadlineAt, deadline);
+      expect(last.rehearsal.transcript?.expiresAt, deadline);
+      // 정확한 만료 경계: 기한 1초 전에는 남고, 기한 도달 시 삭제
+      final keep =
+          (await store.purgeExpired(
+                    deadline.subtract(const Duration(seconds: 1)),
+                  )
+                  as Success<List<String>>)
+              .value;
+      expect(keep, isEmpty);
+      expect(store.length, 1);
+      final purged =
+          (await store.purgeExpired(deadline) as Success<List<String>>).value;
+      expect(purged, ['r-new']);
+    });
+
+    test('반복 실패해도 기한은 최초 실패 기준으로 연장되지 않는다 (저장소 · Rehearsal 동일)', () async {
+      final earlier = DateTime(2026, 9, 9, 20);
+      final store = MemoryTranscriptStoreService();
+      final last = await runLast(
+        pipeline(interpret: failing, store: store),
+        rehearsal: fresh().copyWith(firstFailureAt: earlier),
+        retention: RetentionOption.immediate,
+      );
+      final deadline = earlier.add(const Duration(hours: 24));
+      expect(last.rehearsal.transcript?.retryDeadlineAt, deadline);
+      final purged =
+          (await store.purgeExpired(deadline) as Success<List<String>>).value;
+      expect(purged, ['r-new'], reason: '저장소 만료도 같은 기한');
+    });
+  });
+
+  group('AI 재시도 (P0-REV-05 전사문 경로 · P0-REV-12 정리 책임)', () {
+    test(
+      '7일 옵션(stored): 재시도 성공 → ai 채워짐, 단계 succeeded, 전사문은 원본 만료까지 보관',
+      () async {
+        final store = MemoryTranscriptStoreService();
+        final p = pipeline(store: store);
+        await store.save(
+          rehearsalId: DemoData.rehearsal3.id,
+          transcript: MockTranscriptionService.demoTranscript,
+          expiresAt: DateTime(2026, 9, 16),
+        );
+        final failed = DemoData.rehearsal3.copyWith(
+          stages: {
+            ...DemoData.rehearsal3.stages,
+            ProcessingStage.interpret: StageState.failed,
+          },
+        );
+        final result = await p.retryInterpret(
+          rehearsal: failed,
+          presentation: DemoData.presentation,
+          script: DemoData.scriptV3,
+          partialReport: DemoData.report3Partial,
+        );
+        expect(result, isA<Success<PipelineProgress>>());
+        final progress = (result as Success<PipelineProgress>).value;
+        expect(progress.report?.ai, isNotNull);
+        expect(
+          progress.stages[ProcessingStage.interpret],
+          StageState.succeeded,
+        );
+        expect(progress.rehearsal.reportId, progress.report!.id);
+        expect(progress.rehearsal.transcript?.state, TranscriptState.stored);
+        expect(store.length, 1, reason: '7일 옵션은 성공해도 조기 삭제하지 않는다');
+      },
+    );
+
+    test('즉시 삭제 옵션(tempRetained): 재시도 성공 → 임시 전사문 삭제, 상태 deleted', () async {
       final store = MemoryTranscriptStoreService();
       final p = pipeline(store: store);
+      final deadline = DateTime(2026, 9, 10, 21, 16);
+      await store.save(
+        rehearsalId: DemoData.rehearsal3.id,
+        transcript: MockTranscriptionService.demoTranscript,
+        expiresAt: deadline,
+      );
+      final temp = DemoData.rehearsal3.copyWith(
+        stages: {
+          ...DemoData.rehearsal3.stages,
+          ProcessingStage.interpret: StageState.failed,
+        },
+        transcript: TranscriptInfo(
+          state: TranscriptState.tempRetained,
+          expiresAt: deadline,
+          retryDeadlineAt: deadline,
+        ),
+      );
+      final result = await p.retryInterpret(
+        rehearsal: temp,
+        presentation: DemoData.presentation,
+        script: DemoData.scriptV3,
+        partialReport: DemoData.report3Partial,
+      );
+      final progress = (result as Success<PipelineProgress>).value;
+      expect(progress.report?.ai, isNotNull);
+      expect(progress.rehearsal.transcript?.state, TranscriptState.deleted);
+      expect(
+        ((await store.load(DemoData.rehearsal3.id)) as Success).value,
+        isNull,
+      );
+      expect(store.length, 0);
+    });
+
+    test('재시도 실패 → Failure, Rehearsal 미변경 · 전사문 유지', () async {
+      final store = MemoryTranscriptStoreService();
+      final p = pipeline(store: store, interpret: failing);
       await store.save(
         rehearsalId: DemoData.rehearsal3.id,
         transcript: MockTranscriptionService.demoTranscript,
@@ -219,8 +366,8 @@ void main() {
         script: DemoData.scriptV3,
         partialReport: DemoData.report3Partial,
       );
-      expect(result, isA<Success<Report>>());
-      expect((result as Success<Report>).value.ai, isNotNull);
+      expect(result, isA<Failure<PipelineProgress>>());
+      expect(store.length, 1);
     });
 
     test('재시도 기한 경과 → Failure (전사문 있어도)', () async {
@@ -237,8 +384,11 @@ void main() {
         script: DemoData.scriptV3,
         partialReport: DemoData.report3Partial,
       );
-      expect(result, isA<Failure<Report>>());
-      expect((result as Failure<Report>).exception.toString(), contains('기한'));
+      expect(result, isA<Failure<PipelineProgress>>());
+      expect(
+        (result as Failure<PipelineProgress>).exception.toString(),
+        contains('기한'),
+      );
     });
 
     test('전사문 삭제됨 → Failure, 새 리허설 안내', () async {
@@ -254,9 +404,9 @@ void main() {
         script: DemoData.scriptV3,
         partialReport: DemoData.report3Partial,
       );
-      expect(result, isA<Failure<Report>>());
+      expect(result, isA<Failure<PipelineProgress>>());
       expect(
-        (result as Failure<Report>).exception.toString(),
+        (result as Failure<PipelineProgress>).exception.toString(),
         contains('새 리허설'),
       );
     });

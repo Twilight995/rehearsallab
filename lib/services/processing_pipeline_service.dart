@@ -63,7 +63,10 @@ abstract class ProcessingPipelineService {
   });
 
   /// AI 해석만 다시 시도. 전사문은 TranscriptStoreService에서 읽고, 기한이 지났으면 Failure.
-  Future<Result<Report>> retryInterpret({
+  /// 성공하면 `PipelineProgress`(interpret 단계 succeeded · reportId · 전사문 상태가 갱신된 Rehearsal, ai가 채워진 Report)를
+  /// 돌려주며, 즉시 삭제 옵션의 임시 전사문(tempRetained)은 여기서 삭제한다. **호출자(처리 Notifier)는 돌려받은
+  /// Rehearsal과 Report를 LocalStore에 저장할 책임**이 있다. 실패하면 Rehearsal은 바뀌지 않는다(firstFailureAt 유지).
+  Future<Result<PipelineProgress>> retryInterpret({
     required Rehearsal rehearsal,
     required Presentation presentation,
     required ScriptVersion script,
@@ -262,8 +265,15 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
           ProcessingStage.interpret,
         ).copyWith(reportId: report.id);
         if (retention == RetentionOption.immediate) {
+          // 단일 확정 기한 = 최초 실패 시각 + 24h. 저장소와 Rehearsal에 같은 값을 적고,
+          // 반복 실패(firstFailureAt 유지)에는 연장하지 않는다 (P0-REV-11).
           final deadline = current.firstFailureAt!.add(
             AppConfig.transcriptRetryWindow,
+          );
+          await transcriptStore.save(
+            rehearsalId: rehearsal.id,
+            transcript: transcript,
+            expiresAt: deadline,
           );
           current = current.copyWith(
             audio: current.audio.copyWith(state: AudioState.deleted),
@@ -279,7 +289,7 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
   }
 
   @override
-  Future<Result<Report>> retryInterpret({
+  Future<Result<PipelineProgress>> retryInterpret({
     required Rehearsal rehearsal,
     required Presentation presentation,
     required ScriptVersion script,
@@ -311,9 +321,29 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
       transcript: transcript,
       partialReport: partialReport,
     );
-    return switch (result) {
-      Success(:final value) => Success(partialReport.copyWith(ai: value)),
-      Failure(:final exception) => Failure(exception),
-    };
+    switch (result) {
+      case Failure(:final exception):
+        return Failure(exception);
+      case Success(:final value):
+        final report = partialReport.copyWith(ai: value);
+        final stages = Map<ProcessingStage, StageState>.of(rehearsal.stages)
+          ..[ProcessingStage.interpret] = StageState.succeeded;
+        var updated = rehearsal.copyWith(stages: stages, reportId: report.id);
+        // 즉시 삭제 옵션의 임시 전사문은 성공 · 포기 · 만료 · 발표 삭제 중 먼저 오는 시점에 지운다 (P0-REV-12).
+        // 7일/30일(stored)은 성공해도 원본 만료까지 보관한다.
+        if (info.state == TranscriptState.tempRetained) {
+          await transcriptStore.delete(rehearsal.id);
+          updated = updated.copyWith(
+            transcript: info.copyWith(state: TranscriptState.deleted),
+          );
+        }
+        return Success(
+          PipelineProgress(
+            stages: Map.unmodifiable(stages),
+            rehearsal: updated,
+            report: report,
+          ),
+        );
+    }
   }
 }
