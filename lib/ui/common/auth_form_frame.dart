@@ -39,6 +39,7 @@ class AuthFormFrame extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppTopBar(onBack: onBack),
+      // 태블릿 · 가로 모드: 본문 읽기 폭 480 상한 · 중앙 정렬 (통합 문서 7장, C1-REV-05)
       body: SingleChildScrollView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(
@@ -47,88 +48,95 @@ class AuthFormFrame extends StatelessWidget {
           AppSpacing.page,
           AppSpacing.xxl,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: 28,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 10,
-              children: [
-                const Icon(
-                  LucideIcons.asterisk,
-                  size: 36,
-                  color: AppColors.navy900,
-                ),
-                Text(
-                  title,
-                  style: AppTheme.display(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: AppTheme.body(
-                    fontSize: 15,
-                    color: AppColors.textSecondary,
-                    height: 1.5,
-                  ),
-                ),
-              ],
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: AppSpacing.contentMaxWidth,
             ),
-            AutofillGroup(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                spacing: AppSpacing.lg,
-                children: [
-                  ...fields,
-                  if (errorText != null)
-                    Semantics(
-                      liveRegion: true,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        spacing: AppSpacing.sm,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 2),
-                            child: Icon(
-                              LucideIcons.circleAlert,
-                              size: 16,
-                              color: AppColors.danger,
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              errorText!,
-                              style: AppTheme.body(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: AppColors.danger,
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 28,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 10,
+                  children: [
+                    const Icon(
+                      LucideIcons.asterisk,
+                      size: 36,
+                      color: AppColors.navy900,
+                    ),
+                    Text(
+                      title,
+                      style: AppTheme.display(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.5,
                       ),
                     ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              spacing: AppSpacing.sm,
-              children: [
-                PrimaryButton(
-                  label: submitLabel,
-                  onPressed: submitting ? null : onSubmit,
+                    Text(
+                      subtitle,
+                      style: AppTheme.body(
+                        fontSize: 15,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
                 ),
-                ...altActions,
+                AutofillGroup(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: AppSpacing.lg,
+                    children: [
+                      ...fields,
+                      if (errorText != null)
+                        Semantics(
+                          liveRegion: true,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            spacing: AppSpacing.sm,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(
+                                  LucideIcons.circleAlert,
+                                  size: 16,
+                                  color: AppColors.danger,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  errorText!,
+                                  style: AppTheme.body(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.danger,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  spacing: AppSpacing.sm,
+                  children: [
+                    PrimaryButton(
+                      label: submitLabel,
+                      onPressed: submitting ? null : onSubmit,
+                    ),
+                    ...altActions,
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

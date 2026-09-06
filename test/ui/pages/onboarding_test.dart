@@ -6,6 +6,7 @@ import 'package:rehearsallab/app/app_strings.dart';
 import 'package:rehearsallab/app/router/app_page.dart';
 import 'package:rehearsallab/app/router/app_router.dart';
 import 'package:rehearsallab/app/theme/app_theme.dart';
+import 'package:rehearsallab/core/models/result.dart';
 import 'package:rehearsallab/features/consent/consent_provider.dart';
 import 'package:rehearsallab/models/consent_record.dart';
 import 'package:rehearsallab/models/provider_config.dart';
@@ -116,7 +117,7 @@ void main() {
       final version = service.computeConsentVersion(ProviderConfig.empty);
       await service.saveConsent(
         ConsentRecord(
-          userId: 'u',
+          userId: ConsentService.unboundUserId,
           consentVersion: version,
           acceptedAt: DateTime(2026),
         ),
@@ -204,9 +205,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(LoginPage), findsOneWidget);
       final saved =
-          ((await service.loadConsent()) as dynamic).value as ConsentRecord?;
-      expect(saved, isNotNull);
-      expect(saved!.consentVersion, startsWith('mock-'));
+          ((await service.loadConsents()) as Success<List<ConsentRecord>>)
+              .value;
+      expect(saved.single.userId, ConsentService.unboundUserId);
+      expect(saved.single.consentVersion, startsWith('mock-'));
     });
   });
 

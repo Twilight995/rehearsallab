@@ -8,7 +8,9 @@ import 'package:rehearsallab/ui/common/primary_button.dart';
 
 /// Pen 01 · 02 · 03 온보딩 공통 골격: 히어로 그라데이션 배경, 상단(로고 · 건너뛰기),
 /// 가운데 `hero`(Expanded), 하단(페이지 점 · 헤드라인 · 본문 · CTA). 높이 844 고정 프레임을
-/// Column + Expanded로 옮겼으므로 어떤 높이에서도 하단 CTA가 보이고 hero만 남는 공간을 쓴다.
+/// Column + Expanded로 옮겼으므로 지원 범위(폭 320~430 · 높이 640 이상 · 글자 130%)에서 하단 CTA가
+/// 보이고 hero만 남는 공간을 쓴다. 태블릿 · 가로 모드에서는 배경은 전체를 채우되 본문(hero · 하단)을
+/// 480 상한으로 가운데 모은다 (통합 문서 7장, C1-REV-05).
 class OnboardingFrame extends StatelessWidget {
   final Widget hero;
   final int pageIndex;
@@ -35,8 +37,35 @@ class OnboardingFrame extends StatelessWidget {
     this.heroAlignment = MainAxisAlignment.center,
   });
 
+  /// 이 높이 미만(가로 모드 등)에서는 hero 스크롤 + 하단 고정 대신 화면 전체를 한 스크롤로 둔다.
+  /// 하단 블록(점 · 헤드라인 · 본문 · CTA)만으로 높이를 거의 다 쓰기 때문이다.
+  static const double compactHeight = 560;
+
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).height < compactHeight;
+    final heroBlock = _ReadingWidth(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: compact ? 0 : _heroMinHeight(context),
+        ),
+        child: Column(
+          mainAxisAlignment: heroAlignment,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          spacing: AppSpacing.xl,
+          children: [hero],
+        ),
+      ),
+    );
+    final bottomBlock = Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.page,
+        0,
+        AppSpacing.page,
+        AppSpacing.xxl,
+      ),
+      child: _ReadingWidth(child: _bottomColumn()),
+    );
     return Scaffold(
       body: DecoratedBox(
         decoration: const BoxDecoration(gradient: AppColors.heroGradient),
@@ -76,84 +105,30 @@ class OnboardingFrame extends StatelessWidget {
                   ],
                 ),
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(AppSpacing.page),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: _heroMinHeight(context),
-                    ),
+              if (compact)
+                Expanded(
+                  child: SingleChildScrollView(
                     child: Column(
-                      mainAxisAlignment: heroAlignment,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      spacing: AppSpacing.xl,
-                      children: [hero],
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(AppSpacing.page),
+                          child: heroBlock,
+                        ),
+                        bottomBlock,
+                      ],
                     ),
                   ),
+                )
+              else ...[
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppSpacing.page),
+                    child: heroBlock,
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.page,
-                  0,
-                  AppSpacing.page,
-                  AppSpacing.xxl,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: AppSpacing.md,
-                  children: [
-                    Semantics(
-                      label: '$pageCount쪽 중 ${pageIndex + 1}쪽',
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                        child: Row(
-                          spacing: 6,
-                          children: [
-                            for (var i = 0; i < pageCount; i++)
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                width: i == pageIndex ? 20 : 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: i == pageIndex
-                                      ? AppColors.onDark
-                                      : AppColors.onDarkMuted,
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Text(
-                      headline,
-                      style: AppTheme.display(
-                        fontSize: 30,
-                        color: AppColors.onDark,
-                        height: 1.15,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    Text(
-                      body,
-                      style: AppTheme.body(
-                        fontSize: 15,
-                        color: AppColors.onDarkMuted,
-                        height: 1.55,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: AppSpacing.lg),
-                      child: PrimaryButton(
-                        label: ctaLabel,
-                        onDark: true,
-                        onPressed: onCta,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                bottomBlock,
+              ],
             ],
           ),
         ),
@@ -161,9 +136,80 @@ class OnboardingFrame extends StatelessWidget {
     );
   }
 
-  /// 작은 화면(높이 640)에서는 hero가 스크롤되고, 큰 화면에서는 가운데 정렬되도록 최소 높이를 준다.
+  Widget _bottomColumn() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: AppSpacing.md,
+      children: [
+        Semantics(
+          label: '$pageCount쪽 중 ${pageIndex + 1}쪽',
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: Row(
+              spacing: 6,
+              children: [
+                for (var i = 0; i < pageCount; i++)
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: i == pageIndex ? 20 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: i == pageIndex
+                          ? AppColors.onDark
+                          : AppColors.onDarkMuted,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Text(
+          headline,
+          style: AppTheme.display(
+            fontSize: 30,
+            color: AppColors.onDark,
+            height: 1.15,
+            letterSpacing: -0.5,
+          ),
+        ),
+        Text(
+          body,
+          style: AppTheme.body(
+            fontSize: 15,
+            color: AppColors.onDarkMuted,
+            height: 1.55,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: AppSpacing.lg),
+          child: PrimaryButton(label: ctaLabel, onDark: true, onPressed: onCta),
+        ),
+      ],
+    );
+  }
+
+  /// 작은 화면(높이 640)에서는 hero가 스크롤되고, 큰 화면에서는 가운데 정렬되도록 내용 최소 높이를 준다.
+  /// 스크롤 viewport 자체는 남는 공간만큼이며, 이 값은 그 안의 내용 최소 높이다.
   double _heroMinHeight(BuildContext context) {
     final height = MediaQuery.sizeOf(context).height;
     return (height * 0.36).clamp(160.0, 420.0);
+  }
+}
+
+/// 본문 읽기 폭 480 상한 · 가운데 정렬. 폭이 좁으면 부모 폭을 그대로 쓴다 (통합 문서 7장).
+class _ReadingWidth extends StatelessWidget {
+  final Widget child;
+
+  const _ReadingWidth({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
+        child: SizedBox(width: double.infinity, child: child),
+      ),
+    );
   }
 }

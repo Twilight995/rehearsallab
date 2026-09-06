@@ -11,10 +11,12 @@ import 'package:rehearsallab/app/theme/app_spacing.dart';
 import 'package:rehearsallab/app/theme/app_theme.dart';
 import 'package:rehearsallab/features/auth/auth_provider.dart';
 import 'package:rehearsallab/features/consent/consent_provider.dart';
+import 'package:rehearsallab/ui/common/primary_button.dart';
 
-/// 00 스플래시 (`TTj3V`). 잠시 보여준 뒤 동의 상태에 따라 분기한다.
-/// - 저장된 동의가 현재 버전과 같음 → 세션 있으면 06/07 홈, 없으면 04 로그인
-/// - 없거나 버전이 다름 → 01 소개
+/// 00 스플래시 (`TTj3V`). 잠시 보여준 뒤 동의 · 세션 상태에 따라 분기한다.
+/// - 세션 있음: 그 계정의 동의가 현재 버전이면 06/07 홈, 아니면 01 소개(→ 03 재동의)
+/// - 세션 없음: 미귀속(`local`) 동의가 현재 버전이면 04 로그인, 아니면 01 소개
+/// 설정 · 동의 · 세션 로드에 실패하면 화면에 오류와 재시도 버튼을 보여준다 (C1-REV-03).
 class SplashPage extends ConsumerStatefulWidget {
   /// 테스트에서 지연을 없애기 위해 주입
   final Duration delay;
@@ -30,6 +32,7 @@ class SplashPage extends ConsumerStatefulWidget {
 
 class _SplashPageState extends ConsumerState<SplashPage> {
   Timer? _timer;
+  Object? _error;
 
   @override
   void initState() {
@@ -38,18 +41,30 @@ class _SplashPageState extends ConsumerState<SplashPage> {
   }
 
   Future<void> _decide() async {
-    // 동의 기록 로드가 끝날 때까지 기다린 뒤 분기
-    await ref.read(consentNotifierProvider.future);
-    final current = await ref
-        .read(consentNotifierProvider.notifier)
-        .isCurrent();
-    if (!current) {
-      if (mounted) context.go(AppPage.onboardingIntro.path);
-      return;
+    try {
+      // 동의 기록 · 세션 로드가 끝날 때까지 기다린 뒤 분기
+      await ref.read(consentNotifierProvider.future);
+      final user = await ref.read(authNotifierProvider.future);
+      final current = await ref
+          .read(consentNotifierProvider.notifier)
+          .isCurrentFor(user?.id);
+      if (!mounted) return;
+      if (!current) {
+        context.go(AppPage.onboardingIntro.path);
+      } else {
+        context.go(user == null ? AppPage.login.path : AppPage.home.path);
+      }
+    } on Object catch (e) {
+      if (mounted) setState(() => _error = e);
     }
-    final user = await ref.read(authNotifierProvider.future);
-    if (!mounted) return;
-    context.go(user == null ? AppPage.login.path : AppPage.home.path);
+  }
+
+  void _retry() {
+    setState(() => _error = null);
+    ref.invalidate(providerConfigProvider);
+    ref.invalidate(consentNotifierProvider);
+    ref.invalidate(authNotifierProvider);
+    _decide();
   }
 
   @override
@@ -95,14 +110,45 @@ class _SplashPageState extends ConsumerState<SplashPage> {
                   AppSpacing.page,
                   40,
                 ),
-                child: Text(
-                  AppStrings.splashTagline,
-                  textAlign: TextAlign.center,
-                  style: AppTheme.body(
-                    fontSize: 13,
-                    color: AppColors.onDarkMuted,
-                  ),
-                ),
+                child: _error == null
+                    ? Text(
+                        AppStrings.splashTagline,
+                        textAlign: TextAlign.center,
+                        style: AppTheme.body(
+                          fontSize: 13,
+                          color: AppColors.onDarkMuted,
+                        ),
+                      )
+                    : Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: AppSpacing.contentMaxWidth,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            spacing: AppSpacing.md,
+                            children: [
+                              Semantics(
+                                liveRegion: true,
+                                child: Text(
+                                  AppStrings.splashLoadFailed,
+                                  textAlign: TextAlign.center,
+                                  style: AppTheme.body(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.onDark,
+                                  ),
+                                ),
+                              ),
+                              PrimaryButton(
+                                label: AppStrings.commonRetry,
+                                onDark: true,
+                                onPressed: _retry,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
               ),
             ],
           ),

@@ -103,11 +103,11 @@ void main() {
       expect(ProviderConfig.empty.isConfigured, isFalse);
     });
 
-    test('저장 · 불러오기 · 삭제', () async {
+    test('저장 · 불러오기 · 삭제 (계정별)', () async {
       final service = MockConsentService();
       expect(
-        ((await service.loadConsent()) as Success<ConsentRecord?>).value,
-        isNull,
+        ((await service.loadConsents()) as Success<List<ConsentRecord>>).value,
+        isEmpty,
       );
       final record = ConsentRecord(
         userId: 'u',
@@ -115,14 +115,23 @@ void main() {
         acceptedAt: DateTime(2026, 9, 6),
       );
       await service.saveConsent(record);
+      await service.saveConsent(record.copyWith(userId: 'v'));
+      await service.saveConsent(record.copyWith(consentVersion: 'c-2'));
+      final records =
+          ((await service.loadConsents()) as Success<List<ConsentRecord>>)
+              .value;
+      expect(records, hasLength(2), reason: '같은 userId는 덮어씀');
+      expect(records.firstWhere((r) => r.userId == 'u').consentVersion, 'c-2');
+      await service.clearConsent(userId: 'u');
       expect(
-        ((await service.loadConsent()) as Success<ConsentRecord?>).value,
-        record,
+        ((await service.loadConsents()) as Success<List<ConsentRecord>>).value
+            .map((r) => r.userId),
+        ['v'],
       );
       await service.clearConsent();
       expect(
-        ((await service.loadConsent()) as Success<ConsentRecord?>).value,
-        isNull,
+        ((await service.loadConsents()) as Success<List<ConsentRecord>>).value,
+        isEmpty,
       );
     });
 

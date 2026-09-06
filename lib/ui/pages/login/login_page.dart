@@ -6,6 +6,8 @@ import 'package:rehearsallab/app/router/app_page.dart';
 import 'package:rehearsallab/core/extension/build_context_extension.dart';
 import 'package:rehearsallab/core/models/result.dart';
 import 'package:rehearsallab/features/auth/auth_provider.dart';
+import 'package:rehearsallab/features/consent/consent_provider.dart';
+import 'package:rehearsallab/models/user_account.dart';
 import 'package:rehearsallab/services/auth_service.dart';
 import 'package:rehearsallab/ui/common/auth_form_frame.dart';
 import 'package:rehearsallab/ui/common/label_text_field.dart';
@@ -41,13 +43,32 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       _error = null;
       _submitting = true;
     });
-    final result = await ref
-        .read(authNotifierProvider.notifier)
-        .signIn(_email.text, _password.text);
+    await _finish(
+      () => ref
+          .read(authNotifierProvider.notifier)
+          .signIn(_email.text, _password.text),
+    );
+  }
+
+  /// 성공: 이 계정의 동의가 현재 버전이면 홈, 아니면 03 재동의. 실패 · 예외: 문구 표시 후 다시 시도 가능.
+  Future<void> _finish(Future<Result<UserAccount>> Function() action) async {
+    Result<UserAccount> result;
+    try {
+      result = await action();
+    } on Object catch (e) {
+      // 저장소 · 서비스가 Result 밖으로 던진 예외(Error 포함)도 화면에서는 복구 가능해야 한다
+      result = Failure(e is Exception ? e : Exception(e.toString()));
+    }
     if (!mounted) return;
     switch (result) {
-      case Success():
-        context.go(AppPage.home.path);
+      case Success(:final value):
+        final consented = await ref
+            .read(consentNotifierProvider.notifier)
+            .isCurrentFor(value.id);
+        if (!mounted) return;
+        context.go(
+          consented ? AppPage.home.path : AppPage.onboardingPrivacy.path,
+        );
       case Failure(:final exception):
         setState(() {
           _submitting = false;

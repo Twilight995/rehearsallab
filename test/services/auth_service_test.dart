@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rehearsallab/core/enum/auth_error_code.dart';
 import 'package:rehearsallab/core/models/result.dart';
@@ -8,6 +10,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   AuthErrorCode? codeOf(Result<Object?> result) =>
       ((result as Failure).exception as AuthException).code;
+
+  /// 테스트용 저비용 hasher (알고리즘은 동일, 반복만 낮춤)
+  const fast = PasswordHasher(iterations: 1000);
 
   group('입력 검증 (04 · 05)', () {
     test('이메일 형식', () {
@@ -112,40 +117,94 @@ void main() {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
     test('가입 후 새 인스턴스에서도 세션 · 로그인 유지', () async {
-      final a = PrefsAuthService();
+      final a = PrefsAuthService(hasher: fast);
       final signedUp = await a.signUp('k@univ.ac.kr', 'password1');
       expect(signedUp, isA<Success<UserAccount>>());
 
-      final b = PrefsAuthService();
+      final b = PrefsAuthService(hasher: fast);
       final restored = ((await b.currentUser()) as Success<UserAccount?>).value;
       expect(restored, (signedUp as Success<UserAccount>).value);
 
       await b.signOut();
       expect(
-        ((await PrefsAuthService().currentUser()) as Success<UserAccount?>)
+        ((await PrefsAuthService(hasher: fast).currentUser())
+                as Success<UserAccount?>)
             .value,
         isNull,
       );
       expect(
-        await PrefsAuthService().signIn('k@univ.ac.kr', 'password1'),
+        await PrefsAuthService(
+          hasher: fast,
+        ).signIn('k@univ.ac.kr', 'password1'),
         isA<Success<UserAccount>>(),
       );
     });
 
-    test('비밀번호 원문은 저장되지 않는다 (salted SHA-256)', () async {
-      await PrefsAuthService().signUp('k@univ.ac.kr', 'password1');
+    test('비밀번호 원문은 저장되지 않고 KDF 파라미터를 함께 저장한다 (C1-REV-04)', () async {
+      await PrefsAuthService(hasher: fast).signUp('k@univ.ac.kr', 'password1');
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(PrefsAuthService.accountsKey)!;
       expect(raw, isNot(contains('password1')));
-      expect(raw, contains('password_hash'));
-      expect(raw, contains('salt'));
+      final record =
+          (json.decode(raw) as Map<String, dynamic>)['k@univ.ac.kr']
+              as Map<String, dynamic>;
+      expect(record['algorithm'], PasswordHasher.algorithm);
+      expect(record['iterations'], 1000);
+      expect(record['salt'], isNotEmpty);
+      expect((record['password_hash'] as String).length, 64);
+    });
+
+    test('손상된 JSON → Failure(storage), 데이터는 지우지 않는다 (C1-REV-03 재현)', () async {
+      SharedPreferences.setMockInitialValues({
+        PrefsAuthService.accountsKey: '{broken',
+      });
+      final service = PrefsAuthService(hasher: fast);
+      expect(
+        codeOf(await service.signIn('a@b.com', 'abcdefgh')),
+        AuthErrorCode.storage,
+      );
+      expect(
+        codeOf(await service.signUp('a@b.com', 'abcdefgh')),
+        AuthErrorCode.storage,
+      );
+      expect(
+        await service.currentUser(),
+        isA<Success<UserAccount?>>(),
+        reason: '세션 키가 없으면 계정 목록을 읽지 않는다',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(PrefsAuthService.accountsKey), '{broken');
+
+      SharedPreferences.setMockInitialValues({
+        PrefsAuthService.accountsKey: '{broken',
+        PrefsAuthService.sessionKey: 'u-1',
+      });
+      expect(
+        codeOf(await PrefsAuthService(hasher: fast).currentUser()),
+        AuthErrorCode.storage,
+        reason: '세션이 있으면 목록을 읽다가 실패 → Failure',
+      );
+    });
+
+    test('형식이 다른 JSON(필드 누락)도 Failure(storage)', () async {
+      SharedPreferences.setMockInitialValues({
+        PrefsAuthService.accountsKey: json.encode({
+          'a@b.com': {'id': 'u-1'},
+        }),
+      });
+      expect(
+        codeOf(
+          await PrefsAuthService(hasher: fast).signIn('a@b.com', 'abcdefgh'),
+        ),
+        AuthErrorCode.storage,
+      );
     });
 
     test('세션만 남고 계정이 없으면 세션을 정리한다', () async {
       SharedPreferences.setMockInitialValues({
         PrefsAuthService.sessionKey: 'u-ghost',
       });
-      final service = PrefsAuthService();
+      final service = PrefsAuthService(hasher: fast);
       expect(
         ((await service.currentUser()) as Success<UserAccount?>).value,
         isNull,
@@ -153,21 +212,88 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString(PrefsAuthService.sessionKey), isNull);
     });
+
+    test('초기 단일 SHA-256 레코드는 로그인 성공 시 PBKDF2로 다시 저장된다', () async {
+      const salt = 'old-salt';
+      SharedPreferences.setMockInitialValues({
+        PrefsAuthService.accountsKey: json.encode({
+          'old@b.com': {
+            'id': 'u-old',
+            'email': 'old@b.com',
+            'created_at': DateTime(2026, 9, 1).toIso8601String(),
+            'salt': salt,
+            'password_hash': PasswordHasher.legacyHash('password1', salt),
+          },
+        }),
+      });
+      final service = PrefsAuthService(hasher: fast);
+      expect(
+        await service.signIn('old@b.com', 'password1'),
+        isA<Success<UserAccount>>(),
+      );
+      final prefs = await SharedPreferences.getInstance();
+      final record =
+          (json.decode(prefs.getString(PrefsAuthService.accountsKey)!)
+                  as Map<String, dynamic>)['old@b.com']
+              as Map<String, dynamic>;
+      expect(record['algorithm'], PasswordHasher.algorithm);
+      expect(record['iterations'], 1000);
+      expect(record['salt'], isNot(salt));
+      expect(
+        await PrefsAuthService(hasher: fast).signIn('old@b.com', 'password1'),
+        isA<Success<UserAccount>>(),
+        reason: '재저장 후에도 로그인',
+      );
+      expect(
+        codeOf(
+          await PrefsAuthService(hasher: fast).signIn('old@b.com', 'wrong-pw'),
+        ),
+        AuthErrorCode.invalidCredentials,
+      );
+    });
+
+    test('반복 횟수가 다른 hasher로도 저장된 파라미터로 검증한다', () async {
+      await PrefsAuthService(hasher: fast).signUp('k@univ.ac.kr', 'password1');
+      expect(
+        await PrefsAuthService(
+          hasher: const PasswordHasher(iterations: 2000),
+        ).signIn('k@univ.ac.kr', 'password1'),
+        isA<Success<UserAccount>>(),
+      );
+    });
   });
 
-  group('PasswordHasher', () {
-    test('같은 비밀번호라도 salt가 다르면 해시가 다르다', () {
+  group('PasswordHasher (PBKDF2-HMAC-SHA256)', () {
+    test('같은 비밀번호라도 salt가 다르면 해시가 다르고, 같은 입력은 같은 값', () {
       final s1 = PasswordHasher.newSalt();
       final s2 = PasswordHasher.newSalt();
       expect(s1, isNot(s2));
       expect(
-        PasswordHasher.hash('password1', s1),
-        isNot(PasswordHasher.hash('password1', s2)),
+        PasswordHasher.derive('password1', s1, 1000),
+        isNot(PasswordHasher.derive('password1', s2, 1000)),
       );
       expect(
-        PasswordHasher.hash('password1', s1),
-        PasswordHasher.hash('password1', s1),
+        PasswordHasher.derive('password1', s1, 1000),
+        PasswordHasher.derive('password1', s1, 1000),
       );
+      expect(
+        PasswordHasher.derive('password1', s1, 1000),
+        isNot(PasswordHasher.derive('password1', s1, 1001)),
+        reason: '반복 횟수도 결과에 반영',
+      );
+    });
+
+    test('RFC 6070 PBKDF2-HMAC-SHA256 검증 벡터 (password/salt, 4096회)', () {
+      expect(
+        PasswordHasher.derive('password', 'salt', 4096),
+        'c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a',
+      );
+    });
+
+    test('기본 반복 횟수는 OWASP 권고 범위를 참고한 값', () {
+      expect(PasswordHasher.defaultIterations, greaterThanOrEqualTo(200000));
+      expect(const PasswordHasher().offload, isFalse);
+      expect(PrefsAuthService, isNotNull);
     });
   });
 

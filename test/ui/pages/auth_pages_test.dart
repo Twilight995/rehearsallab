@@ -5,12 +5,15 @@ import 'package:go_router/go_router.dart';
 import 'package:rehearsallab/app/app_strings.dart';
 import 'package:rehearsallab/app/router/app_page.dart';
 import 'package:rehearsallab/app/router/app_router.dart';
+import 'package:rehearsallab/app/theme/app_spacing.dart';
 import 'package:rehearsallab/app/theme/app_theme.dart';
 import 'package:rehearsallab/core/enum/auth_error_code.dart';
+import 'package:rehearsallab/core/models/result.dart';
 import 'package:rehearsallab/features/auth/auth_provider.dart';
 import 'package:rehearsallab/features/consent/consent_provider.dart';
 import 'package:rehearsallab/models/consent_record.dart';
 import 'package:rehearsallab/models/provider_config.dart';
+import 'package:rehearsallab/models/user_account.dart';
 import 'package:rehearsallab/services/auth_service.dart';
 import 'package:rehearsallab/services/consent_service.dart';
 import 'package:rehearsallab/ui/common/app_top_bar.dart';
@@ -20,6 +23,23 @@ import 'package:rehearsallab/ui/pages/login/login_page.dart';
 import 'package:rehearsallab/ui/pages/onboarding_privacy/onboarding_privacy_page.dart';
 import 'package:rehearsallab/ui/pages/signup/signup_page.dart';
 import 'package:rehearsallab/ui/pages/splash/splash_page.dart';
+
+/// 저장소가 예외를 던지는 상황 (Result 경계 밖으로 새는지 확인)
+class _ThrowingAuthService extends AuthService {
+  @override
+  Future<Result<UserAccount?>> currentUser() async => const Success(null);
+
+  @override
+  Future<Result<UserAccount>> signIn(String email, String password) =>
+      throw StateError('storage exploded');
+
+  @override
+  Future<Result<UserAccount>> signUp(String email, String password) =>
+      throw StateError('storage exploded');
+
+  @override
+  Future<Result<void>> signOut() async => const Success(null);
+}
 
 void main() {
   const widths = [320.0, 390.0, 430.0];
@@ -60,6 +80,19 @@ void main() {
     return router;
   }
 
+  /// 로그인 전 03에서 저장된 미귀속 동의 (현재 버전)
+  MockConsentService localConsent() {
+    final service = MockConsentService();
+    service.saveConsent(
+      ConsentRecord(
+        userId: ConsentService.unboundUserId,
+        consentVersion: service.computeConsentVersion(ProviderConfig.empty),
+        acceptedAt: DateTime(2026),
+      ),
+    );
+    return service;
+  }
+
   Future<void> enter(WidgetTester tester, String label, String text) async {
     final field = find.ancestor(
       of: find.text(label),
@@ -75,6 +108,16 @@ void main() {
     await tester.ensureVisible(find.text(label));
     await tester.tap(find.text(label));
     await tester.pumpAndSettle();
+  }
+
+  Future<void> demoLogin(WidgetTester tester) async {
+    await enter(tester, AppStrings.authEmailLabel, MockAuthService.demoEmail);
+    await enter(
+      tester,
+      AppStrings.authPasswordLabel,
+      MockAuthService.demoPassword,
+    );
+    await submit(tester, AppStrings.loginButton);
   }
 
   group('04 로그인', () {
@@ -112,17 +155,44 @@ void main() {
       expect(find.byType(LoginPage), findsOneWidget);
     });
 
-    testWidgets('데모 계정 로그인 성공 → 홈 (4장: 로그인 성공 → 06/07)', (tester) async {
-      final consent = MockConsentService();
+    testWidgets('미귀속 동의 있음 + 데모 로그인 성공 → 홈 · 동의는 계정에 묶임', (tester) async {
+      final consent = localConsent();
       await pumpApp(tester, initial: AppPage.login.path, consent: consent);
-      await enter(tester, AppStrings.authEmailLabel, MockAuthService.demoEmail);
-      await enter(
-        tester,
-        AppStrings.authPasswordLabel,
-        MockAuthService.demoPassword,
-      );
-      await submit(tester, AppStrings.loginButton);
+      await demoLogin(tester);
       expect(find.byType(HomePage), findsOneWidget);
+      final records =
+          ((await consent.loadConsents()) as Success<List<ConsentRecord>>)
+              .value;
+      expect(records.map((r) => r.userId), ['u-demo']);
+    });
+
+    testWidgets('이 계정의 동의가 없으면 로그인 성공 후 03 재동의 → 동의하면 홈', (tester) async {
+      await pumpApp(tester, initial: AppPage.login.path);
+      await demoLogin(tester);
+      expect(find.byType(OnboardingPrivacyPage), findsOneWidget);
+      await tester.ensureVisible(find.textContaining('이해했고 동의합니다'));
+      await tester.tap(find.textContaining('이해했고 동의합니다'));
+      await tester.pumpAndSettle();
+      await submit(tester, AppStrings.privacyAgreeButton);
+      expect(find.byType(HomePage), findsOneWidget, reason: '세션이 있으면 홈');
+    });
+
+    testWidgets('저장소 예외 → 문구 표시 · 버튼 복구 (C1-REV-03)', (tester) async {
+      await pumpApp(
+        tester,
+        initial: AppPage.login.path,
+        auth: _ThrowingAuthService(),
+      );
+      await enter(tester, AppStrings.authEmailLabel, MockAuthService.demoEmail);
+      await enter(tester, AppStrings.authPasswordLabel, 'password1');
+      await submit(tester, AppStrings.loginButton);
+      expect(tester.takeException(), isNull);
+      expect(find.text(AppStrings.authErrorUnknown), findsOneWidget);
+      expect(
+        tester.widget<PrimaryButton>(find.byType(PrimaryButton)).onPressed,
+        isNotNull,
+        reason: '다시 시도 가능',
+      );
     });
 
     testWidgets('가입하기 링크 → 05 · 뒤로가기 → 04', (tester) async {
@@ -151,7 +221,12 @@ void main() {
   group('05 가입', () {
     testWidgets('확인 불일치 → 오류, 일치 → 홈 · 세션 생성', (tester) async {
       final auth = MockAuthService(seedDemoAccount: false);
-      await pumpApp(tester, initial: AppPage.signup.path, auth: auth);
+      await pumpApp(
+        tester,
+        initial: AppPage.signup.path,
+        auth: auth,
+        consent: localConsent(),
+      );
       await enter(tester, AppStrings.authEmailLabel, 'new@univ.ac.kr');
       await enter(tester, AppStrings.authPasswordLabel, 'password1');
       await enter(tester, AppStrings.authPasswordConfirmLabel, 'password2');
@@ -165,9 +240,22 @@ void main() {
       await submit(tester, AppStrings.signupButton);
       expect(find.byType(HomePage), findsOneWidget);
       expect(
-        ((await auth.currentUser()) as dynamic).value?.email,
+        ((await auth.currentUser()) as Success<UserAccount?>).value?.email,
         'new@univ.ac.kr',
       );
+    });
+
+    testWidgets('동의 없이 가입 → 03 재동의', (tester) async {
+      await pumpApp(
+        tester,
+        initial: AppPage.signup.path,
+        auth: MockAuthService(seedDemoAccount: false),
+      );
+      await enter(tester, AppStrings.authEmailLabel, 'new@univ.ac.kr');
+      await enter(tester, AppStrings.authPasswordLabel, 'password1');
+      await enter(tester, AppStrings.authPasswordConfirmLabel, 'password1');
+      await submit(tester, AppStrings.signupButton);
+      expect(find.byType(OnboardingPrivacyPage), findsOneWidget);
     });
 
     testWidgets('이미 가입된 이메일 → emailTaken', (tester) async {
@@ -190,20 +278,11 @@ void main() {
   });
 
   group('00 스플래시 세션 분기', () {
-    testWidgets('동의 현재 + 세션 있음 → 홈', (tester) async {
-      final consent = MockConsentService();
-      await consent.saveConsent(
-        ConsentRecord(
-          userId: 'u-demo',
-          consentVersion: consent.computeConsentVersion(ProviderConfig.empty),
-          acceptedAt: DateTime(2026),
-        ),
-      );
-      final auth = MockAuthService();
-      await auth.signIn(
-        MockAuthService.demoEmail,
-        MockAuthService.demoPassword,
-      );
+    Future<void> pumpSplash(
+      WidgetTester tester, {
+      required MockConsentService consent,
+      required MockAuthService auth,
+    }) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -230,13 +309,57 @@ void main() {
                   path: AppPage.home.path,
                   builder: (_, _) => const HomePage(),
                 ),
+                GoRoute(
+                  path: AppPage.onboardingIntro.path,
+                  builder: (_, _) => const Scaffold(body: Text('intro')),
+                ),
               ],
             ),
           ),
         ),
       );
       await tester.pumpAndSettle();
+    }
+
+    MockConsentService consentFor(String userId) {
+      final service = MockConsentService();
+      service.saveConsent(
+        ConsentRecord(
+          userId: userId,
+          consentVersion: service.computeConsentVersion(ProviderConfig.empty),
+          acceptedAt: DateTime(2026),
+        ),
+      );
+      return service;
+    }
+
+    testWidgets('세션 계정의 동의가 현재 → 홈', (tester) async {
+      final auth = MockAuthService();
+      await auth.signIn(
+        MockAuthService.demoEmail,
+        MockAuthService.demoPassword,
+      );
+      await pumpSplash(tester, consent: consentFor('u-demo'), auth: auth);
       expect(find.byType(HomePage), findsOneWidget);
+    });
+
+    testWidgets('세션은 있지만 다른 계정의 동의만 있음 → 01 소개 (재동의)', (tester) async {
+      final auth = MockAuthService();
+      await auth.signIn(
+        MockAuthService.demoEmail,
+        MockAuthService.demoPassword,
+      );
+      await pumpSplash(tester, consent: consentFor('account-A'), auth: auth);
+      expect(find.text('intro'), findsOneWidget);
+    });
+
+    testWidgets('세션 없음 + 미귀속 동의 현재 → 04 로그인', (tester) async {
+      await pumpSplash(
+        tester,
+        consent: consentFor(ConsentService.unboundUserId),
+        auth: MockAuthService(),
+      );
+      expect(find.byType(LoginPage), findsOneWidget);
     });
   });
 
@@ -296,6 +419,57 @@ void main() {
           });
         }
       }
+
+      for (final size in const [Size(1024, 844), Size(844, 390)]) {
+        testWidgets(
+          '${page.name} @ ${size.width.toInt()}×${size.height.toInt()} 본문 480 상한 · 중앙 (C1-REV-05)',
+          (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            addTearDown(tester.view.reset);
+            await pumpApp(tester, initial: page.path, size: size);
+            expect(tester.takeException(), isNull);
+            final field = tester.getRect(find.byType(TextField).first);
+            expect(field.width, lessThanOrEqualTo(AppSpacing.contentMaxWidth));
+            expect(
+              (field.center.dx - size.width / 2).abs(),
+              lessThan(1),
+              reason: '가운데 정렬',
+            );
+            final button = tester.getRect(find.byType(PrimaryButton));
+            expect(button.width, lessThanOrEqualTo(AppSpacing.contentMaxWidth));
+          },
+        );
+      }
     }
+
+    testWidgets('320×640 · 글자 1.3 · 키보드 250 · 상단 24에서 가입 CTA 스크롤 도달', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 250);
+      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 24);
+      tester.view.padding = const FakeViewPadding(top: 24);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: AppTheme.light,
+            home: MediaQuery(
+              data: MediaQueryData.fromView(
+                tester.view,
+              ).copyWith(textScaler: const TextScaler.linear(1.3)),
+              child: const SignupPage(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text(AppStrings.signupButton));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text(AppStrings.signupButton).hitTestable(), findsOneWidget);
+    });
   });
 }

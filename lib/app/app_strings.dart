@@ -75,7 +75,14 @@ class AppStrings {
     AuthErrorCode.passwordMismatch => '비밀번호가 서로 다릅니다.',
     AuthErrorCode.emailTaken => '이미 가입된 이메일입니다. 로그인해 주세요.',
     AuthErrorCode.invalidCredentials => '이메일 또는 비밀번호가 맞지 않습니다.',
+    AuthErrorCode.storage =>
+      '계정 정보를 읽거나 저장하지 못했습니다. 앱을 다시 실행해도 같으면 설정에서 데이터를 확인해 주세요.',
+    AuthErrorCode.consentBind => '동의 기록을 저장하지 못해 로그인을 완료할 수 없습니다. 다시 시도해 주세요.',
   };
+  static const splashLoadFailed = '설정을 불러오지 못했습니다.';
+  static const privacyLoading = '고지 내용을 불러오는 중입니다';
+  static const privacyLoadFailed = '고지 내용을 불러오지 못했습니다. 다시 시도해 주세요.';
+  static const privacyVersionPending = '불러오는 중';
   static const loginTitle = '다시 오셨네요';
   static const loginSubtitle = '이메일과 비밀번호로 로그인하세요.';
   static const authEmailLabel = '이메일';
