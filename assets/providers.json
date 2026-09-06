@@ -1,0 +1,5 @@
+{
+  "_comment": "ProviderConfig (HANDOFF_INTEGRATED.md 5장). 공개 표시 정보만 둔다. API 비밀키 금지. 비어 있으면 앱은 '개발용 목업 · 제공사 미지정'을 표시하고 live 모드의 외부 전송을 차단한다.",
+  "stt": null,
+  "llm": null
+}
