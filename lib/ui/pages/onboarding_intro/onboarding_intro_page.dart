@@ -159,6 +159,7 @@ class _MetricPreviewList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
+      // fixed-size: 상한만 고정(Pen 02 지표 카드 250px). 좁은 폭에서는 부모 폭을 따르고 넓은 폭에서 가운데 정렬
       constraints: const BoxConstraints(maxWidth: 250),
       child: Column(
         spacing: AppSpacing.md,
