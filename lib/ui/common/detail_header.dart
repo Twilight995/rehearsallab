@@ -163,7 +163,7 @@ class _TabItem extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 10),
+              padding: const EdgeInsets.only(top: 13, bottom: 13),
               child: Text(
                 tab.label,
                 style: AppTheme.body(

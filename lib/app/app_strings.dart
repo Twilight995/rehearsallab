@@ -126,7 +126,7 @@ class AppStrings {
   static String settingsRetentionValue(String option) => '녹음 · 전사문 $option';
   static const settingsDeleteAll = '모든 데이터 삭제';
   static const settingsRetentionNote =
-      "녹음 · 전사문 원본: 선택한 기간 (녹음 시각 기준, 재분석해도 연장되지 않음) / 원고 · 분석 · 리포트: 직접 삭제 전까지. 리포트의 발화 인용은 원본 삭제 후에도 남습니다. '처리 후 즉시 삭제'를 고르면 구간 재생을 쓸 수 없고 삭제된 녹음은 복원되지 않으며, AI 분석 실패 시 전사문은 재시도를 위해 최대 24시간 임시 보관됩니다.";
+      "녹음 · 전사문 원본: 선택한 기간 (녹음 시각 기준, 재분석해도 연장되지 않음) / 원고 · 분석 · 리포트: 직접 삭제 전까지. 리포트의 발화 인용은 원본 삭제 후에도 남습니다. '처리 후 즉시 삭제'를 고르면 구간 재생을 쓸 수 없고 삭제된 녹음은 복원되지 않으며, 이 옵션에서만 AI 분석 실패 시 전사문을 재시도용으로 최대 24시간 임시 보관합니다.";
   static const settingsGroupInfo = '정보';
   static const settingsPrivacyAgain = '프라이버시 고지 다시 보기';
   static const settingsProviders = 'AI · 음성인식 제공사';
@@ -351,7 +351,14 @@ class AppStrings {
   static String stateAudioLocal(String until) =>
       '녹음: 기기에만 저장됨 · $until까지 재시도 가능 · 외부 전송 전';
   static const stateAudioDeleted = '녹음 삭제됨 · 재생 불가';
-  static String stateAiFailed(String deadline) =>
+
+  /// 7일 · 30일 옵션: 전사문은 녹음과 같은 보관 기간 (재시도 기한 = 원본 만료)
+  static String stateAiFailedRetained(String deadline) =>
+      'AI 해석: 실패 · $deadline까지 재시도 가능 (전사문은 녹음과 함께 보관)';
+  static const stateAiFailedDeleted = 'AI 해석: 실패 · 전사문이 삭제되어 재시도 불가 · 새 리허설 필요';
+
+  /// 즉시 삭제 옵션: 전사문 24시간 임시 보관 예외
+  static String stateAiFailedTempRetained(String deadline) =>
       'AI 해석: 실패 · $deadline까지 재시도 가능 (전사문 임시 보관 24시간)';
   static const stateAiOk = 'AI 해석: 완료';
 

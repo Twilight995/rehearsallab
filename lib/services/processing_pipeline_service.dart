@@ -1,5 +1,10 @@
+import 'package:rehearsallab/app/app_config.dart';
+import 'package:rehearsallab/core/enum/audio_state.dart';
+import 'package:rehearsallab/core/enum/match_rate_scope.dart';
 import 'package:rehearsallab/core/enum/processing_stage.dart';
+import 'package:rehearsallab/core/enum/retention_option.dart';
 import 'package:rehearsallab/core/enum/stage_state.dart';
+import 'package:rehearsallab/core/enum/transcript_state.dart';
 import 'package:rehearsallab/core/models/result.dart';
 import 'package:rehearsallab/models/presentation.dart';
 import 'package:rehearsallab/models/rehearsal.dart';
@@ -7,13 +12,16 @@ import 'package:rehearsallab/models/report.dart';
 import 'package:rehearsallab/models/script_version.dart';
 import 'package:rehearsallab/services/alignment_service.dart';
 import 'package:rehearsallab/services/metrics_service.dart';
-import 'package:rehearsallab/services/mock/demo_data.dart';
 import 'package:rehearsallab/services/report_interpret_service.dart';
+import 'package:rehearsallab/services/script_estimate_service.dart';
+import 'package:rehearsallab/services/transcript_store_service.dart';
 import 'package:rehearsallab/services/transcription_service.dart';
 
 /// 파이프라인 진행 관찰값. 단계별 상태를 그대로 노출한다 (부분 실패 원칙).
 class PipelineProgress {
   final Map<ProcessingStage, StageState> stages;
+
+  /// 단계 · 전사문 · 실패 시각이 갱신된 리허설. 저장은 호출자(처리 Notifier)가 한다.
   final Rehearsal rehearsal;
 
   /// 지표 · 대조가 끝나면 채워진다 (AI 실패여도 존재)
@@ -40,17 +48,21 @@ class PipelineProgress {
 ///
 /// - 업로드 → 받아쓰기 → 지표 계산 → 원고 대조 → AI 해석
 /// - 각 단계 성공 · 실패를 따로 보존한다. AI만 실패하면 report.ai == null인 부분 리포트를 만든다.
-/// - 전송 전 실패(업로드)와 전송 후 실패(받아쓰기 타임아웃)는 Rehearsal.externalDeletion 상태가 다르다.
-/// - 재시도 기한 · 보관 만료 계산은 주입 가능한 시계(now)를 쓴다 (X2-2 테스트).
+/// - 받아쓰기 성공 직후 전사문을 TranscriptStoreService에 저장하고 Rehearsal.transcript를 채운다.
+///   7일/30일: expiresAt = 녹음 시각 + 보관 기간. 즉시 삭제: AI 성공 시 전사문 삭제, AI 실패 시 tempRetained (+24h).
+/// - 전 회차 비교(prevMatchRate)는 호출자가 넘긴 `previousReport`가 있고 **두 리포트 모두 scope=full**일 때만 채운다.
+/// - 실패 시각 `firstFailureAt`은 최초 실패 때만 기록한다. 시계는 주입 가능(now).
 abstract class ProcessingPipelineService {
   Stream<PipelineProgress> run({
     required Rehearsal rehearsal,
     required Presentation presentation,
     required ScriptVersion script,
     required String audioFilePath,
+    required RetentionOption retention,
+    Report? previousReport,
   });
 
-  /// AI 해석만 다시 시도 (오디오 불필요, 전사문 필요).
+  /// AI 해석만 다시 시도. 전사문은 TranscriptStoreService에서 읽고, 기한이 지났으면 Failure.
   Future<Result<Report>> retryInterpret({
     required Rehearsal rehearsal,
     required Presentation presentation,
@@ -65,6 +77,8 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
   final MetricsService metrics;
   final AlignmentService alignment;
   final ReportInterpretService interpret;
+  final TranscriptStoreService transcriptStore;
+  final ScriptEstimateService scriptEstimate;
   final Duration stepDelay;
   final DateTime Function() now;
 
@@ -73,9 +87,24 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
     this.metrics = const MockMetricsService(),
     this.alignment = const MockAlignmentService(),
     this.interpret = const MockReportInterpretService(delay: Duration.zero),
+    TranscriptStoreService? transcriptStore,
+    ScriptEstimateService? scriptEstimate,
     this.stepDelay = const Duration(milliseconds: 800),
     DateTime Function()? now,
-  }) : now = now ?? DateTime.now;
+  }) : transcriptStore = transcriptStore ?? MemoryTranscriptStoreService(),
+       scriptEstimate = scriptEstimate ?? ScriptEstimateService(),
+       now = now ?? DateTime.now;
+
+  /// 두 리포트 모두 원고 전체 기준일 때만 전 회차 일치율을 돌려준다.
+  static double? comparablePrevMatchRate({
+    required Report? previous,
+    required MatchRateScope currentScope,
+  }) {
+    if (previous == null) return null;
+    if (currentScope != MatchRateScope.full) return null;
+    if (previous.matchRateScope != MatchRateScope.full) return null;
+    return previous.matchRate;
+  }
 
   @override
   Stream<PipelineProgress> run({
@@ -83,6 +112,8 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
     required Presentation presentation,
     required ScriptVersion script,
     required String audioFilePath,
+    required RetentionOption retention,
+    Report? previousReport,
   }) async* {
     final stages = <ProcessingStage, StageState>{
       for (final s in ProcessingStage.values) s: StageState.pending,
@@ -96,6 +127,14 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
           report: report,
           errorMessage: error,
         );
+
+    Rehearsal failAt(ProcessingStage stage) {
+      stages[stage] = StageState.failed;
+      return current.copyWith(
+        stages: Map.of(stages),
+        firstFailureAt: current.firstFailureAt ?? now(),
+      );
+    }
 
     stages[ProcessingStage.upload] = StageState.running;
     yield progress();
@@ -114,15 +153,30 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
       case Success(:final value):
         transcript = value;
         stages[ProcessingStage.transcribe] = StageState.succeeded;
-      case Failure(:final exception):
-        stages[ProcessingStage.transcribe] = StageState.failed;
+        final retentionDuration = retention.duration;
+        final expiresAt = retentionDuration != null
+            ? rehearsal.recordedAt.add(retentionDuration)
+            : now().add(AppConfig.transcriptRetryWindow);
+        await transcriptStore.save(
+          rehearsalId: rehearsal.id,
+          transcript: transcript,
+          expiresAt: expiresAt,
+        );
         current = current.copyWith(
           stages: Map.of(stages),
-          firstFailureAt: current.firstFailureAt ?? now(),
+          transcript: TranscriptInfo(
+            state: TranscriptState.stored,
+            expiresAt: expiresAt,
+          ),
         );
+      case Failure(:final exception):
+        current = failAt(ProcessingStage.transcribe);
         yield progress(error: exception.toString());
         return;
     }
+
+    final sections = scriptEstimate.splitSections(script.text);
+    final sentences = scriptEstimate.splitSentences(script.text);
 
     stages[ProcessingStage.metrics] = StageState.running;
     current = current.copyWith(stages: Map.of(stages));
@@ -130,7 +184,7 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
     await Future<void>.delayed(stepDelay);
     final metricsResult = metrics.compute(
       transcript: transcript,
-      sections: const [],
+      sections: sections,
       totalSec: rehearsal.durationSec,
       talkMinutes: presentation.talkMinutes,
     );
@@ -140,11 +194,7 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
         reportMetrics = value;
         stages[ProcessingStage.metrics] = StageState.succeeded;
       case Failure(:final exception):
-        stages[ProcessingStage.metrics] = StageState.failed;
-        current = current.copyWith(
-          stages: Map.of(stages),
-          firstFailureAt: current.firstFailureAt ?? now(),
-        );
+        current = failAt(ProcessingStage.metrics);
         yield progress(error: exception.toString());
         return;
     }
@@ -154,7 +204,7 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
     yield progress();
     await Future<void>.delayed(stepDelay);
     final aligned = alignment.align(
-      scriptSentences: const [],
+      scriptSentences: sentences,
       transcript: transcript,
       capReached: rehearsal.capReached,
     );
@@ -164,11 +214,7 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
         alignmentResult = value;
         stages[ProcessingStage.align] = StageState.succeeded;
       case Failure(:final exception):
-        stages[ProcessingStage.align] = StageState.failed;
-        current = current.copyWith(
-          stages: Map.of(stages),
-          firstFailureAt: current.firstFailureAt ?? now(),
-        );
+        current = failAt(ProcessingStage.align);
         yield progress(error: exception.toString());
         return;
     }
@@ -180,7 +226,10 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
       alignment: alignmentResult.sentences,
       matchRate: alignmentResult.matchRate,
       matchRateScope: alignmentResult.scope,
-      prevMatchRate: DemoData.report2.matchRate,
+      prevMatchRate: comparablePrevMatchRate(
+        previous: previousReport,
+        currentScope: alignmentResult.scope,
+      ),
       createdAt: now(),
     );
 
@@ -190,6 +239,7 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
     final interpreted = await interpret.interpret(
       presentation: presentation,
       script: script,
+      transcript: transcript,
       partialReport: report,
     );
     switch (interpreted) {
@@ -197,14 +247,33 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
         report = report.copyWith(ai: value);
         stages[ProcessingStage.interpret] = StageState.succeeded;
         current = current.copyWith(stages: Map.of(stages), reportId: report.id);
+        if (retention == RetentionOption.immediate) {
+          await transcriptStore.delete(rehearsal.id);
+          current = current.copyWith(
+            audio: current.audio.copyWith(state: AudioState.deleted),
+            transcript: current.transcript?.copyWith(
+              state: TranscriptState.deleted,
+            ),
+          );
+        }
         yield progress(report: report);
       case Failure(:final exception):
-        stages[ProcessingStage.interpret] = StageState.failed;
-        current = current.copyWith(
-          stages: Map.of(stages),
-          firstFailureAt: current.firstFailureAt ?? now(),
-          reportId: report.id,
-        );
+        current = failAt(
+          ProcessingStage.interpret,
+        ).copyWith(reportId: report.id);
+        if (retention == RetentionOption.immediate) {
+          final deadline = current.firstFailureAt!.add(
+            AppConfig.transcriptRetryWindow,
+          );
+          current = current.copyWith(
+            audio: current.audio.copyWith(state: AudioState.deleted),
+            transcript: current.transcript?.copyWith(
+              state: TranscriptState.tempRetained,
+              expiresAt: deadline,
+              retryDeadlineAt: deadline,
+            ),
+          );
+        }
         yield progress(report: report, error: exception.toString());
     }
   }
@@ -216,9 +285,30 @@ class MockProcessingPipelineService implements ProcessingPipelineService {
     required ScriptVersion script,
     required Report partialReport,
   }) async {
+    final info = rehearsal.transcript;
+    if (info == null || info.state == TranscriptState.deleted) {
+      return Failure(
+        Exception('전사문이 삭제되어 AI 해석을 다시 시도할 수 없습니다. 새 리허설이 필요합니다.'),
+      );
+    }
+    if (!now().isBefore(info.effectiveRetryDeadline)) {
+      return Failure(Exception('재시도 기한이 지났습니다. 새 리허설이 필요합니다.'));
+    }
+    final loaded = await transcriptStore.load(rehearsal.id);
+    final Transcript transcript;
+    switch (loaded) {
+      case Success(:final value):
+        if (value == null) {
+          return Failure(Exception('보관된 전사문을 찾을 수 없습니다.'));
+        }
+        transcript = value;
+      case Failure(:final exception):
+        return Failure(exception);
+    }
     final result = await interpret.interpret(
       presentation: presentation,
       script: script,
+      transcript: transcript,
       partialReport: partialReport,
     );
     return switch (result) {

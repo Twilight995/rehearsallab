@@ -75,9 +75,21 @@ class MemoryLocalStoreService implements LocalStoreService {
 
   @override
   Future<Result<void>> deletePresentation(String presentationId) async {
+    // 발표에 딸린 원고 버전 · 분석 · 리허설 · 리포트를 모두 지운다 (근거 인용 · 발화 인용 잔존 금지).
     _presentations.remove(presentationId);
-    _versions.removeWhere((_, v) => v.presentationId == presentationId);
+    final versionIds = _versions.values
+        .where((v) => v.presentationId == presentationId)
+        .map((v) => v.id)
+        .toSet();
+    final reportIds = _rehearsals.values
+        .where((r) => r.presentationId == presentationId)
+        .map((r) => r.reportId)
+        .whereType<String>()
+        .toSet();
+    _versions.removeWhere((id, _) => versionIds.contains(id));
+    _analyses.removeWhere((versionId, _) => versionIds.contains(versionId));
     _rehearsals.removeWhere((_, r) => r.presentationId == presentationId);
+    _reports.removeWhere((id, _) => reportIds.contains(id));
     return const Success(null);
   }
 

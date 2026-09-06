@@ -7,6 +7,7 @@ import 'package:rehearsallab/app/theme/app_theme.dart';
 import 'package:rehearsallab/app/theme/preview.dart';
 import 'package:rehearsallab/core/enum/audio_state.dart';
 import 'package:rehearsallab/core/enum/stage_state.dart';
+import 'package:rehearsallab/core/enum/transcript_state.dart';
 
 @AppThemePreview(group: 'Status', name: 'StateSummary')
 Widget preview() => const Padding(
@@ -14,29 +15,44 @@ Widget preview() => const Padding(
   child: Column(
     spacing: 12,
     children: [
+      // 7일 옵션 · AI 실패: 전사문은 녹음과 함께 9월 16일까지 보관 → 재시도 기한도 9월 16일
       StateSummary(
         aiState: StageState.failed,
         audioState: AudioState.stored,
+        transcriptState: TranscriptState.stored,
         audioDateLabel: '9월 16일 21:14',
-        retryDeadlineLabel: '9월 10일 21:14',
+        retryDeadlineLabel: '9월 16일 21:14',
       ),
+      // 즉시 삭제 옵션 · AI 실패: 녹음 삭제, 전사문만 24시간 임시 보관
+      StateSummary(
+        aiState: StageState.failed,
+        audioState: AudioState.deleted,
+        transcriptState: TranscriptState.tempRetained,
+        retryDeadlineLabel: '9월 10일 21:16',
+      ),
+      // 업로드 실패 · 전송 전
       StateSummary(
         aiState: StageState.pending,
         audioState: AudioState.localOnly,
         audioDateLabel: '9월 16일',
       ),
+      // AI 성공 · 보관 만료
       StateSummary(
         aiState: StageState.succeeded,
         audioState: AudioState.expired,
+        transcriptState: TranscriptState.deleted,
       ),
     ],
   ),
 );
 
-/// Pen `StateSummary` (18 · 19 · 33 · 34). AI 상태와 오디오 상태를 **독립적으로 조합**해 보여준다.
+/// Pen `StateSummary` (18 · 19 · 33 · 34). AI 상태 · 오디오 상태 · 전사문 상태를 **독립적으로 조합**해 보여준다.
+/// AI 실패 문구는 전사문 보관 상태(정책)에 따라 달라진다:
+/// 7일/30일(stored) → 원본 만료까지 재시도, 즉시 삭제(tempRetained) → 24시간 임시 보관, deleted → 재시도 불가.
 class StateSummary extends StatelessWidget {
   final StageState aiState;
   final AudioState audioState;
+  final TranscriptState? transcriptState;
 
   /// stored: 삭제 예정일 · localOnly: 재시도 가능 기한
   final String? audioDateLabel;
@@ -46,6 +62,7 @@ class StateSummary extends StatelessWidget {
     super.key,
     required this.aiState,
     required this.audioState,
+    this.transcriptState,
     this.audioDateLabel,
     this.retryDeadlineLabel,
   });
@@ -62,15 +79,20 @@ class StateSummary extends StatelessWidget {
     AudioState.expired || AudioState.deleted => LucideIcons.volumeX,
   };
 
+  String get _aiFailedText => switch (transcriptState) {
+    TranscriptState.tempRetained => AppStrings.stateAiFailedTempRetained(
+      retryDeadlineLabel ?? '-',
+    ),
+    TranscriptState.deleted => AppStrings.stateAiFailedDeleted,
+    TranscriptState.stored ||
+    null => AppStrings.stateAiFailedRetained(retryDeadlineLabel ?? '-'),
+  };
+
   @override
   Widget build(BuildContext context) {
     final rows = <(IconData, String)>[
       (_audioIcon, _audioText),
-      if (aiState == StageState.failed)
-        (
-          LucideIcons.sparkles,
-          AppStrings.stateAiFailed(retryDeadlineLabel ?? '-'),
-        ),
+      if (aiState == StageState.failed) (LucideIcons.sparkles, _aiFailedText),
       if (aiState == StageState.succeeded)
         (LucideIcons.sparkles, AppStrings.stateAiOk),
     ];

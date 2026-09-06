@@ -44,7 +44,9 @@ class AppChip extends StatelessWidget {
           onTap: onTap,
           customBorder: const StadiumBorder(),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 40),
+            constraints: const BoxConstraints(
+              minHeight: AppSpacing.touchTarget,
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.lg,

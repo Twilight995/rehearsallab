@@ -44,8 +44,9 @@ Widget preview() => Padding(
   ),
 );
 
-/// Pen `RehearsalCard` (i1oaVW). #회차 원형 · 날짜 · 메타(시간/규격 · 일치 · 필러) · 전 회차 대비 변화.
-/// 종합 점수는 사용하지 않는다. 부분 리허설이면 배지를 달고 증감 대신 "평가 범위 다름".
+/// Pen `RehearsalCard` (i1oaVW). #회차 원형 · 날짜 · (부분 리허설 배지) · 메타 · 전 회차 대비 변화.
+/// 종합 점수는 사용하지 않는다. 부분 리허설이면 증감 대신 "평가 범위 다름".
+/// 좁은 폭(320 · 큰 글자)에서는 날짜 · 배지가 Wrap으로 줄바꿈되고 비교값은 메타 아래 줄로 내려간다.
 class RehearsalCard extends StatelessWidget {
   final Rehearsal rehearsal;
   final Report? report;
@@ -74,30 +75,26 @@ class RehearsalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = report;
     final isPartial = rehearsal.scope == RehearsalScope.partial;
+    final spec = Duration(minutes: talkMinutes).mmss;
     final meta = r == null
-        ? '${rehearsal.duration.mmss} / ${Duration(minutes: talkMinutes).mmss}'
+        ? '${rehearsal.duration.mmss} / $spec'
         : AppStrings.listMeta(
             rehearsal.duration.mmss,
-            Duration(minutes: talkMinutes).mmss,
+            spec,
             (r.matchRate * 100).round(),
             r.metrics.fillers.length,
           );
     final delta = r?.matchRateDeltaPp;
     final String deltaText;
     final Color deltaColor;
-    final double deltaSize;
-    if (isPartial && delta == null) {
-      deltaText = AppStrings.reportScopeDiffers;
+    if (delta == null) {
+      deltaText = isPartial
+          ? AppStrings.reportScopeDiffers
+          : AppStrings.listFirstRound;
       deltaColor = AppColors.textTertiary;
-      deltaSize = 12;
-    } else if (delta == null) {
-      deltaText = AppStrings.listFirstRound;
-      deltaColor = AppColors.textTertiary;
-      deltaSize = 12;
     } else {
       deltaText = '${delta >= 0 ? '+' : ''}${delta.round()}%p';
       deltaColor = delta >= 0 ? AppColors.success : AppColors.danger;
-      deltaSize = 16;
     }
 
     return Semantics(
@@ -116,6 +113,7 @@ class RehearsalCard extends StatelessWidget {
               border: Border.all(color: AppColors.border),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 14,
               children: [
                 Container(
@@ -137,18 +135,18 @@ class RehearsalCard extends StatelessWidget {
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: 4,
+                    spacing: 6,
                     children: [
-                      Row(
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         spacing: 8,
+                        runSpacing: 4,
                         children: [
-                          Flexible(
-                            child: Text(
-                              _dateLabel,
-                              style: AppTheme.body(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          Text(
+                            _dateLabel,
+                            style: AppTheme.body(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                           if (isPartial)
@@ -165,33 +163,40 @@ class RehearsalCard extends StatelessWidget {
                           color: AppColors.textSecondary,
                         ),
                       ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        spacing: 6,
+                        children: [
+                          if (delta != null)
+                            Text(
+                              AppStrings.listVsPrev,
+                              style: AppTheme.body(
+                                fontSize: 11,
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                          Flexible(
+                            child: Text(
+                              deltaText,
+                              style: AppTheme.display(
+                                fontSize: delta == null ? 12 : 16,
+                                color: deltaColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      deltaText,
-                      style: AppTheme.display(
-                        fontSize: deltaSize,
-                        color: deltaColor,
-                      ),
-                    ),
-                    if (delta != null)
-                      Text(
-                        AppStrings.listVsPrev,
-                        style: AppTheme.body(
-                          fontSize: 11,
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                  ],
-                ),
-                const Icon(
-                  LucideIcons.chevronRight,
-                  size: 18,
-                  color: AppColors.textTertiary,
+                const Padding(
+                  padding: EdgeInsets.only(top: 13),
+                  child: Icon(
+                    LucideIcons.chevronRight,
+                    size: 18,
+                    color: AppColors.textTertiary,
+                  ),
                 ),
               ],
             ),

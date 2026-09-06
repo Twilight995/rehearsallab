@@ -6,15 +6,13 @@ import 'package:rehearsallab/app/theme/app_theme.dart';
 import 'package:rehearsallab/app/theme/preview.dart';
 
 @AppThemePreview(group: 'Navigation', name: 'BottomDock')
-Widget preview() => Padding(
-  padding: const EdgeInsets.all(20),
-  child: Column(
-    spacing: 16,
-    children: [
-      BottomDock(current: DockTab.home, onTap: (_) {}, onFabTap: () {}),
-      BottomDock(current: DockTab.settings, onTap: (_) {}),
-    ],
-  ),
+// 실제 배치와 같게 바깥 여백 없이 전체 폭에 둔다 (여백은 BottomDock 자신이 16px 소유).
+Widget preview() => Column(
+  spacing: 16,
+  children: [
+    BottomDock(current: DockTab.home, onTap: (_) {}, onFabTap: () {}),
+    BottomDock(current: DockTab.settings, onTap: (_) {}),
+  ],
 );
 
 enum DockTab { home, presentation, settings }

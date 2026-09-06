@@ -236,6 +236,48 @@ class DemoData {
   static List<Rehearsal> get rehearsals => [rehearsal3, rehearsal2, rehearsal1];
 
   /// 타임라인 32구간 WPM (결과 섹션 09:00 부근 181 급상승)
+  /// 타임라인 32구간 WPM(어절/분) **측정값**. 평균 142, 결과 섹션(08:40–11:30) 안 09:06 지점(index 23)에 181.
+  /// 그래프 높이는 이 값에서 파생한다. 시각용 높이에서 측정값을 역산하지 않는다.
+  static const List<int> wpmSeriesValues = [
+    118,
+    124,
+    128,
+    122,
+    131,
+    134,
+    137,
+    131,
+    128,
+    133,
+    139,
+    136,
+    142,
+    139,
+    138,
+    142, //
+    136,
+    138,
+    144,
+    146,
+    148,
+    145,
+    160,
+    181,
+    176,
+    172,
+    168,
+    158,
+    150,
+    140,
+    132,
+    128,
+  ];
+
+  /// 타임라인 선택 지점(181 WPM) 인덱스 · 시각
+  static const int selectedWpmIndex = 23;
+  static const int selectedWpmTimeSec = 546;
+
+  /// (구) Pen 막대 높이. 그래프 모양 참고용으로만 남긴다.
   static const List<int> wpmHeights = [
     30, 34, 36, 32, 38, 40, 42, 38, 36, 40, 44, 42, 46, 44, 40, 42, //
     38, 40, 44, 46, 48, 50, 56, 62, 60, 58, 54, 48, 44, 40, 36, 34,
@@ -243,8 +285,8 @@ class DemoData {
 
   static final ReportMetrics metrics3 = ReportMetrics(
     wpmSeries: [
-      for (var i = 0; i < wpmHeights.length; i++)
-        WpmPoint(timeSec: (760 * i / 32).round(), wpm: 60 + wpmHeights[i] * 2),
+      for (var i = 0; i < wpmSeriesValues.length; i++)
+        WpmPoint(timeSec: (760 * i / 32).round(), wpm: wpmSeriesValues[i]),
     ],
     fillers: const [
       FillerEvent(timeSec: 71, text: '어'),

@@ -283,7 +283,7 @@ class Report {
       'id': id,
       'rehearsal_id': rehearsalId,
       'metrics': metrics.toMap(),
-      'alignment': alignment.map((e) => e.toMap()).toList(),
+      'alignment': {'sentences': alignment.map((e) => e.toMap()).toList()},
       'match_rate': matchRate,
       'match_rate_scope': matchRateScope.name,
       'prev_match_rate': prevMatchRate,
@@ -297,9 +297,10 @@ class Report {
       id: map['id'] as String,
       rehearsalId: map['rehearsal_id'] as String,
       metrics: ReportMetrics.fromMap(map['metrics'] as Map<String, dynamic>),
-      alignment: (map['alignment'] as List)
-          .map((e) => AlignedSentence.fromMap(e as Map<String, dynamic>))
-          .toList(),
+      alignment:
+          ((map['alignment'] as Map<String, dynamic>)['sentences'] as List)
+              .map((e) => AlignedSentence.fromMap(e as Map<String, dynamic>))
+              .toList(),
       matchRate: (map['match_rate'] as num).toDouble(),
       matchRateScope: MatchRateScopeExtension.fromName(
         map['match_rate_scope'] as String? ?? MatchRateScope.full.name,
