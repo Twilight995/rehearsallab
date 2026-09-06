@@ -1,6 +1,7 @@
 import 'package:rehearsallab/core/models/result.dart';
 import 'package:rehearsallab/models/consent_record.dart';
 import 'package:rehearsallab/models/provider_config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 프라이버시 동의. 통합 문서 4·5·9장.
 /// consentVersion = hash(sttId, llmId, region, dataTypes[], policyVersion).
@@ -61,6 +62,67 @@ class MockConsentService extends ConsentService {
   Future<Result<void>> clearConsent() async {
     _record = null;
     return const Success(null);
+  }
+}
+
+/// SharedPreferences 구현 (live 모드, C1-1). 키는 `consent.*`.
+class PrefsConsentService extends ConsentService {
+  static const String _keyUser = 'consent.user_id';
+  static const String _keyVersion = 'consent.version';
+  static const String _keyAcceptedAt = 'consent.accepted_at';
+
+  final Future<SharedPreferences> Function() _prefs;
+
+  PrefsConsentService({Future<SharedPreferences> Function()? prefs})
+    : _prefs = prefs ?? SharedPreferences.getInstance;
+
+  @override
+  String computeConsentVersion(ProviderConfig config) =>
+      MockConsentService().computeConsentVersion(config);
+
+  @override
+  Future<Result<ConsentRecord?>> loadConsent() async {
+    try {
+      final p = await _prefs();
+      final version = p.getString(_keyVersion);
+      final acceptedAt = p.getString(_keyAcceptedAt);
+      if (version == null || acceptedAt == null) return const Success(null);
+      return Success(
+        ConsentRecord(
+          userId: p.getString(_keyUser) ?? 'local',
+          consentVersion: version,
+          acceptedAt: DateTime.parse(acceptedAt),
+        ),
+      );
+    } on Exception catch (e) {
+      return Failure(e);
+    }
+  }
+
+  @override
+  Future<Result<void>> saveConsent(ConsentRecord record) async {
+    try {
+      final p = await _prefs();
+      await p.setString(_keyUser, record.userId);
+      await p.setString(_keyVersion, record.consentVersion);
+      await p.setString(_keyAcceptedAt, record.acceptedAt.toIso8601String());
+      return const Success(null);
+    } on Exception catch (e) {
+      return Failure(e);
+    }
+  }
+
+  @override
+  Future<Result<void>> clearConsent() async {
+    try {
+      final p = await _prefs();
+      await p.remove(_keyUser);
+      await p.remove(_keyVersion);
+      await p.remove(_keyAcceptedAt);
+      return const Success(null);
+    } on Exception catch (e) {
+      return Failure(e);
+    }
   }
 }
 
