@@ -26,6 +26,9 @@ class LabelTextField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final int maxLines;
   final bool enabled;
+  final List<String>? autofillHints;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
 
   const LabelTextField({
     super.key,
@@ -38,6 +41,9 @@ class LabelTextField extends StatelessWidget {
     this.onChanged,
     this.maxLines = 1,
     this.enabled = true,
+    this.autofillHints,
+    this.textInputAction,
+    this.onSubmitted,
   });
 
   @override
@@ -62,6 +68,9 @@ class LabelTextField extends StatelessWidget {
           onChanged: onChanged,
           maxLines: maxLines,
           enabled: enabled,
+          autofillHints: autofillHints,
+          textInputAction: textInputAction,
+          onSubmitted: onSubmitted,
           style: AppTheme.body(fontSize: 15),
           decoration: InputDecoration(hintText: hintText, suffixIcon: suffix),
         ),

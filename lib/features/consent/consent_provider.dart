@@ -70,6 +70,18 @@ class ConsentNotifier extends AsyncNotifier<ConsentRecord?> {
     return Failure((result as Failure).exception);
   }
 
+  /// 로그인 · 가입 직후: 계정 없이(`local`) 저장된 동의를 이 계정에 묶는다. 이미 다른 계정이면 그대로 둔다.
+  Future<Result<void>> bindUser(String userId) async {
+    final record = state.value;
+    if (record == null || record.userId == userId || record.userId != 'local') {
+      return const Success(null);
+    }
+    final bound = record.copyWith(userId: userId);
+    final result = await _service.saveConsent(bound);
+    if (result is Success) state = AsyncData(bound);
+    return result;
+  }
+
   Future<Result<void>> clear() async {
     final result = await _service.clearConsent();
     if (result is Success) state = const AsyncData(null);

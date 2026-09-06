@@ -9,10 +9,11 @@ import 'package:rehearsallab/app/router/app_page.dart';
 import 'package:rehearsallab/app/theme/app_colors.dart';
 import 'package:rehearsallab/app/theme/app_spacing.dart';
 import 'package:rehearsallab/app/theme/app_theme.dart';
+import 'package:rehearsallab/features/auth/auth_provider.dart';
 import 'package:rehearsallab/features/consent/consent_provider.dart';
 
 /// 00 스플래시 (`TTj3V`). 잠시 보여준 뒤 동의 상태에 따라 분기한다.
-/// - 저장된 동의가 현재 버전과 같음 → 04 로그인 (C1-2 전까지는 placeholder)
+/// - 저장된 동의가 현재 버전과 같음 → 세션 있으면 06/07 홈, 없으면 04 로그인
 /// - 없거나 버전이 다름 → 01 소개
 class SplashPage extends ConsumerStatefulWidget {
   /// 테스트에서 지연을 없애기 위해 주입
@@ -42,8 +43,13 @@ class _SplashPageState extends ConsumerState<SplashPage> {
     final current = await ref
         .read(consentNotifierProvider.notifier)
         .isCurrent();
+    if (!current) {
+      if (mounted) context.go(AppPage.onboardingIntro.path);
+      return;
+    }
+    final user = await ref.read(authNotifierProvider.future);
     if (!mounted) return;
-    context.go(current ? AppPage.login.path : AppPage.onboardingIntro.path);
+    context.go(user == null ? AppPage.login.path : AppPage.home.path);
   }
 
   @override
