@@ -12,6 +12,9 @@ enum AuthErrorCode {
 
   /// 인증은 됐지만 동의 기록을 계정에 묶지 못함. 세션을 만들지 않고 다시 시도하게 한다.
   consentBind,
+
+  /// 인증은 됐지만 이 계정의 동의 상태(기록 · 현재 버전)를 확인하지 못함. 세션을 되돌리고 다시 시도하게 한다.
+  consentCheck,
 }
 
 extension AuthErrorCodeExtension on AuthErrorCode {

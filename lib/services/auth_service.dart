@@ -60,11 +60,12 @@ abstract class AuthService {
 
 /// 비밀번호 저장용 KDF: PBKDF2-HMAC-SHA256 (C1-REV-04, OWASP Password Storage).
 /// 레코드에 알고리즘 · 반복 횟수 · salt를 함께 저장해 나중에 비용을 올려도 기존 레코드를 검증할 수 있다.
-/// 반복 횟수는 순수 Dart 비용을 고려한 값(데스크톱 약 0.45초)이며, `offload`면 별도 isolate에서 계산한다.
+/// live 기본 반복은 OWASP 권고(PBKDF2-HMAC-SHA256 600,000회) 이상이며 `offload`면 별도 isolate에서 계산한다.
+/// 반복이 기본값보다 낮은 레코드(초기 단일 해시 포함)는 로그인 성공 시 현재 기본값으로 다시 저장한다.
 class PasswordHasher {
   static const String algorithm = 'pbkdf2-sha256';
   static const String legacyAlgorithm = 'sha256';
-  static const int defaultIterations = 210000;
+  static const int defaultIterations = 600000;
   static const int _keyLength = 32;
   static final Random _random = Random.secure();
 
@@ -139,6 +140,10 @@ class StoredAccount {
   });
 
   bool get isLegacy => algorithm == PasswordHasher.legacyAlgorithm;
+
+  /// 현재 hasher보다 약한 레코드(구식 알고리즘 또는 낮은 반복)인지
+  bool needsUpgrade(PasswordHasher hasher) =>
+      isLegacy || iterations < hasher.iterations;
 
   Future<bool> matches(String password, PasswordHasher hasher) async {
     if (isLegacy) {
@@ -235,8 +240,8 @@ abstract class _AccountStoreAuthService extends AuthService {
       if (stored == null || !await stored.matches(password, _hasher)) {
         return const Failure(AuthException(AuthErrorCode.invalidCredentials));
       }
-      if (stored.isLegacy) {
-        // 초기 단일 해시 레코드는 로그인 성공 시 PBKDF2로 다시 저장한다
+      if (stored.needsUpgrade(_hasher)) {
+        // 초기 단일 해시 · 기본값보다 낮은 반복의 레코드는 로그인 성공 시 현재 비용으로 다시 저장한다
         accounts[key] = await _newRecord(stored.account, password);
         await _saveAccounts(accounts);
       }

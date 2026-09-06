@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:rehearsallab/app/app_strings.dart';
 import 'package:rehearsallab/app/router/app_page.dart';
 import 'package:rehearsallab/core/extension/build_context_extension.dart';
+import 'package:rehearsallab/core/enum/auth_error_code.dart';
 import 'package:rehearsallab/core/models/result.dart';
 import 'package:rehearsallab/features/auth/auth_provider.dart';
 import 'package:rehearsallab/features/consent/consent_provider.dart';
@@ -62,21 +63,34 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!mounted) return;
     switch (result) {
       case Success(:final value):
-        final consented = await ref
-            .read(consentNotifierProvider.notifier)
-            .isCurrentFor(value.id);
+        final bool consented;
+        try {
+          consented = await ref
+              .read(consentNotifierProvider.notifier)
+              .isCurrentFor(value.id);
+        } on Object {
+          // 동의 기록 · 현재 버전을 읽지 못함 → 세션을 되돌리고 오류 표시 (반쪽 로그인 상태를 남기지 않는다)
+          await ref.read(authNotifierProvider.notifier).signOut();
+          _showError(const AuthException(AuthErrorCode.consentCheck));
+          return;
+        }
         if (!mounted) return;
         context.go(
           consented ? AppPage.home.path : AppPage.onboardingPrivacy.path,
         );
       case Failure(:final exception):
-        setState(() {
-          _submitting = false;
-          _error = exception is AuthException
-              ? AppStrings.authError(exception.code)
-              : AppStrings.authErrorUnknown;
-        });
+        _showError(exception);
     }
+  }
+
+  void _showError(Exception exception) {
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _error = exception is AuthException
+          ? AppStrings.authError(exception.code)
+          : AppStrings.authErrorUnknown;
+    });
   }
 
   void _back() {

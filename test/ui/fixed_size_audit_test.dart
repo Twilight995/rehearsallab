@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// 이 검사는 화면 폭을 고정했을 가능성이 있는 **큰 리터럴**을 리뷰 전에 알려 줄 뿐이다.
 /// - 잡는 것: `width: ≥100`, `height: ≥200`, `Size(w, h)` · `Size.square` · `Size.fromWidth/Height`의
 ///   세 자리 인자(어느 자리든), 줄바꿈된 인자
-/// - 잡지 않는 것: `maxWidth` · `minWidth`(작은 폭에 맞춰 줄어드는 정상 제약), 아이콘 · 점 · 구분선 ·
+/// - 잡지 않는 것: `maxWidth`(작은 폭에 맞춰 줄어드는 상한 제약) · `minWidth`(의도적 미검출 — 하한 제약은 리뷰에서 확인), 아이콘 · 점 · 구분선 ·
 ///   버튼 높이 같은 작은 값, 상수 · 변수 · 계산식(→ 위젯 테스트가 담당)
 /// - 예외: 같은 줄이나 바로 윗줄의 **주석** 안에 `fixed-size: <비어 있지 않은 이유>`. 문자열 속 marker는 무시.
 void main() {
@@ -70,7 +70,11 @@ void main() {
       expect(hits('border: Border.all(width: 1.5)'), isEmpty);
       expect(hits('height: 1.5, // 줄 높이'), isEmpty);
       expect(hits('BoxConstraints(maxWidth: 480)'), isEmpty, reason: '상한 제약');
-      expect(hits('BoxConstraints(minWidth: 320)'), isEmpty);
+      expect(
+        hits('BoxConstraints(minWidth: 320)'),
+        isEmpty,
+        reason: '의도적 미검출(하한 제약은 리뷰에서 확인)',
+      );
       expect(hits('Size(48, 48)'), isEmpty);
       expect(
         hits('width: AppSpacing.designWidth'),

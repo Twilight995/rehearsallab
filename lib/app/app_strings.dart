@@ -78,6 +78,7 @@ class AppStrings {
     AuthErrorCode.storage =>
       '계정 정보를 읽거나 저장하지 못했습니다. 앱을 다시 실행해도 같으면 설정에서 데이터를 확인해 주세요.',
     AuthErrorCode.consentBind => '동의 기록을 저장하지 못해 로그인을 완료할 수 없습니다. 다시 시도해 주세요.',
+    AuthErrorCode.consentCheck => '동의 상태를 확인하지 못해 로그인을 완료할 수 없습니다. 다시 시도해 주세요.',
   };
   static const splashLoadFailed = '설정을 불러오지 못했습니다.';
   static const privacyLoading = '고지 내용을 불러오는 중입니다';

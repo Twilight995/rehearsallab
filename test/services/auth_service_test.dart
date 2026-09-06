@@ -252,6 +252,35 @@ void main() {
       );
     });
 
+    test('저장 비용이 현재 정책보다 낮으면 로그인 성공 시 상향 재저장 (C1-REV-04)', () async {
+      await PrefsAuthService(hasher: fast).signUp('k@univ.ac.kr', 'password1');
+      final stronger = PrefsAuthService(
+        hasher: const PasswordHasher(iterations: 3000),
+      );
+      expect(
+        await stronger.signIn('k@univ.ac.kr', 'password1'),
+        isA<Success<UserAccount>>(),
+      );
+      Future<int> storedIterations() async {
+        final prefs = await SharedPreferences.getInstance();
+        final map =
+            json.decode(prefs.getString(PrefsAuthService.accountsKey)!)
+                as Map<String, dynamic>;
+        return (map['k@univ.ac.kr'] as Map<String, dynamic>)['iterations']
+            as int;
+      }
+
+      expect(await storedIterations(), 3000, reason: '1000 → 3000 상향');
+      expect(
+        await PrefsAuthService(
+          hasher: fast,
+        ).signIn('k@univ.ac.kr', 'password1'),
+        isA<Success<UserAccount>>(),
+        reason: '낮은 hasher로도 저장된 3000으로 검증',
+      );
+      expect(await storedIterations(), 3000, reason: '높은 비용을 낮추지 않는다');
+    });
+
     test('반복 횟수가 다른 hasher로도 저장된 파라미터로 검증한다', () async {
       await PrefsAuthService(hasher: fast).signUp('k@univ.ac.kr', 'password1');
       expect(
@@ -290,8 +319,9 @@ void main() {
       );
     });
 
-    test('기본 반복 횟수는 OWASP 권고 범위를 참고한 값', () {
-      expect(PasswordHasher.defaultIterations, greaterThanOrEqualTo(200000));
+    test('live 기본 반복 횟수는 OWASP 권고(PBKDF2-HMAC-SHA256 600,000) 이상', () {
+      expect(PasswordHasher.defaultIterations, greaterThanOrEqualTo(600000));
+      expect(const PasswordHasher(offload: true).iterations, 600000);
       expect(const PasswordHasher().offload, isFalse);
       expect(PrefsAuthService, isNotNull);
     });

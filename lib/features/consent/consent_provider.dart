@@ -92,7 +92,12 @@ class ConsentNotifier extends AsyncNotifier<List<ConsentRecord>> {
   /// 로그인 · 가입 직후: 미귀속(`local`) 기록이 있으면 이 계정의 기록으로 옮긴다.
   /// 미귀속 기록이 없거나 이미 같은 계정이면 아무것도 하지 않는다. 다른 계정 기록은 건드리지 않는다.
   Future<Result<void>> bindUser(String userId) async {
-    await future;
+    try {
+      await future;
+    } on Object catch (e) {
+      // 기록 로드 실패 → 호출자가 Result로 처리
+      return Failure(e is Exception ? e : Exception(e.toString()));
+    }
     final unbound = recordFor(null);
     if (unbound == null || userId == ConsentService.unboundUserId) {
       return const Success(null);
