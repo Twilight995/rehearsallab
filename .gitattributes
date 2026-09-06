@@ -1,0 +1,8 @@
+*.pen binary
+*.png binary
+*.jpg binary
+*.jks binary
+*.md text eol=lf
+*.json text eol=lf
+*.dart text eol=lf
+*.yaml text eol=lf
