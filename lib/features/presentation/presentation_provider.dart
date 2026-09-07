@@ -78,16 +78,12 @@ class PresentationsNotifier extends AsyncNotifier<List<Presentation>> {
     final saved = await _store.savePresentation(presentation);
     if (saved case Failure(:final exception)) return Failure(exception);
     ref.invalidateSelf();
-    ref.invalidate(homeCardsProvider);
     return Success(presentation);
   }
 
   Future<Result<void>> delete(String presentationId) async {
     final result = await _store.deletePresentation(presentationId);
-    if (result is Success) {
-      ref.invalidateSelf();
-      ref.invalidate(homeCardsProvider);
-    }
+    if (result is Success) ref.invalidateSelf();
     return result;
   }
 }

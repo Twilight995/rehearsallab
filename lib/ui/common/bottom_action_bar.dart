@@ -49,13 +49,20 @@ class BottomActionBar extends StatelessWidget {
             AppSpacing.page,
             12,
           ),
-          child: Row(
-            spacing: 10,
-            children: [
-              if (secondary != null)
-                SizedBox(width: secondaryWidth, child: secondary),
-              Expanded(child: primary),
-            ],
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppSpacing.contentMaxWidth,
+              ),
+              child: Row(
+                spacing: 10,
+                children: [
+                  if (secondary != null)
+                    SizedBox(width: secondaryWidth, child: secondary),
+                  Expanded(child: primary),
+                ],
+              ),
+            ),
           ),
         ),
       ),

@@ -15,6 +15,7 @@ class AppStrings {
   static const commonSave = '저장';
   static const commonRetry = '재시도';
   static const commonBack = '돌아가기';
+  static const commonClose = '닫기';
   static const commonMockBadge = '개발용 목업';
   static const commonProviderUnset = '개발용 목업 · 제공사 미지정';
   static const commonUndetermined = '미확정';
@@ -28,6 +29,17 @@ class AppStrings {
   static const detailTabRehearsal = '리허설';
   static const detailTabQa = 'Q&A';
   static const detailTabHistory = '이력';
+  static const detailMenu = '더 보기';
+  static const detailDeleteMenu = '발표 삭제';
+  static String detailDeleteTitle(String title) => '\'$title\'을(를) 삭제할까요?';
+  static const detailDeleteDesc =
+      '이 발표의 원고 · 분석 · 리허설 녹음 · 리포트가 함께 삭제되며 되돌릴 수 없습니다.';
+  static const detailDeleteConfirm = '삭제';
+  static const detailDeleteFailed = '발표를 삭제하지 못했습니다. 다시 시도해 주세요.';
+  static const detailBadgeLoading = '불러오는 중';
+  static const detailMissing = '발표를 찾을 수 없습니다. 삭제되었거나 잘못된 링크입니다.';
+  static const detailScriptPending = 'C1-6 · 10~13 원고 탭';
+  static const detailRehearsalPending = 'X1 · 20~22 리허설 탭';
 
   // ── 00 스플래시 ──
   static const splashTagline = '발표 전날, 피드백 줄 사람이 없어도';
@@ -175,6 +187,17 @@ class AppStrings {
       '$stt / $llm · $status';
   static const settingsVersion = '버전';
   static const settingsVersionValue = '1.0.0 (proto)';
+  static const settingsSaveFailed = '설정을 저장하지 못했습니다. 다시 시도해 주세요.';
+  static const settingsLogoutFailed = '로그아웃하지 못했습니다. 다시 시도해 주세요.';
+  static String settingsProvidersDetail(
+    String llm,
+    String llmRegion,
+    String llmPolicy,
+    String stt,
+    String sttRegion,
+    String sttPolicy,
+  ) =>
+      'AI: $llm ($llmRegion, 정책 v$llmPolicy)\n음성인식: $stt ($sttRegion, 정책 v$sttPolicy)';
 
   // ── 31 · 32 모든 데이터 삭제 ──
   static const deleteTitle = '모든 데이터 삭제';
@@ -196,6 +219,9 @@ class AppStrings {
   static const delete2Keyword = '삭제';
   static const delete2Note = '계정은 유지됩니다. 데이터만 삭제돼요.';
   static const delete2Confirm = '영구 삭제';
+  static const deleteDone = '모든 데이터를 삭제했습니다.';
+  static const deleteFailed =
+      '일부 데이터를 삭제하지 못했습니다. 삭제된 것으로 표시하지 않았으니 다시 시도해 주세요.';
 
   // ── 10 · 11 · 11b · 12 · 13 · 37 · 38 원고 탭 ──
   static const scriptPlaceholder = '발표 원고를 여기에 붙여넣으세요.';
