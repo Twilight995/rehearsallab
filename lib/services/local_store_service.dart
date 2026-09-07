@@ -1,3 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:rehearsallab/core/models/result.dart';
 import 'package:rehearsallab/models/presentation.dart';
 import 'package:rehearsallab/models/rehearsal.dart';
@@ -163,4 +168,198 @@ class MemoryLocalStoreService implements LocalStoreService {
     _reports.clear();
     return const Success(null);
   }
+}
+
+/// 파일 구현 (live 모드, C1-3). 앱 문서 폴더 `rehearsallab/` 아래 컬렉션별 JSON 파일 5개.
+/// 메모리 구현을 캐시로 쓰고 변이마다 해당 컬렉션 파일을 다시 쓴다. 파일 오류는 Failure로 돌려주고
+/// 손상된 파일은 지우지 않는다 (설정 09 "모든 데이터 삭제"만 파일을 지운다).
+class FileLocalStoreService extends MemoryLocalStoreService {
+  static const String folderName = 'rehearsallab';
+  static const String presentationsFile = 'presentations.json';
+  static const String versionsFile = 'script_versions.json';
+  static const String analysesFile = 'analyses.json';
+  static const String rehearsalsFile = 'rehearsals.json';
+  static const String reportsFile = 'reports.json';
+  static const List<String> allFiles = [
+    presentationsFile,
+    versionsFile,
+    analysesFile,
+    rehearsalsFile,
+    reportsFile,
+  ];
+
+  final Future<Directory> Function() _baseDirectory;
+  Future<void>? _loading;
+
+  FileLocalStoreService({Future<Directory> Function()? baseDirectory})
+    : _baseDirectory = baseDirectory ?? getApplicationDocumentsDirectory;
+
+  Future<Directory> _dir() async {
+    final dir = Directory(p.join((await _baseDirectory()).path, folderName));
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
+  Future<List<Map<String, dynamic>>> _readList(String name) async {
+    final file = File(p.join((await _dir()).path, name));
+    if (!await file.exists()) return const [];
+    final raw = await file.readAsString();
+    if (raw.trim().isEmpty) return const [];
+    return (json.decode(raw) as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .toList();
+  }
+
+  Future<void> _writeList(
+    String name,
+    Iterable<Map<String, dynamic>> items,
+  ) async {
+    final file = File(p.join((await _dir()).path, name));
+    await file.writeAsString(json.encode(items.toList()), flush: true);
+  }
+
+  /// 첫 호출 때 모든 컬렉션을 읽어 메모리 캐시에 채운다. 실패하면 다음 호출에서 다시 시도.
+  Future<void> _ensureLoaded() {
+    return _loading ??= () async {
+      try {
+        for (final m in await _readList(presentationsFile)) {
+          final v = Presentation.fromMap(m);
+          _presentations[v.id] = v;
+        }
+        for (final m in await _readList(versionsFile)) {
+          final v = ScriptVersion.fromMap(m);
+          _versions[v.id] = v;
+        }
+        for (final m in await _readList(analysesFile)) {
+          final v = ScriptAnalysis.fromMap(m);
+          _analyses[v.scriptVersionId] = v;
+        }
+        for (final m in await _readList(rehearsalsFile)) {
+          final v = Rehearsal.fromMap(m);
+          _rehearsals[v.id] = v;
+        }
+        for (final m in await _readList(reportsFile)) {
+          final v = Report.fromMap(m);
+          _reports[v.id] = v;
+        }
+      } on Object {
+        _loading = null;
+        rethrow;
+      }
+    }();
+  }
+
+  Future<Result<T>> _guard<T>(Future<Result<T>> Function() body) async {
+    try {
+      await _ensureLoaded();
+      return await body();
+    } on Exception catch (e) {
+      return Failure(e);
+    } on Error catch (e) {
+      return Failure(Exception(e.toString()));
+    }
+  }
+
+  Future<void> _flushPresentations() => _writeList(
+    presentationsFile,
+    _presentations.values.map((e) => e.toMap()),
+  );
+  Future<void> _flushVersions() =>
+      _writeList(versionsFile, _versions.values.map((e) => e.toMap()));
+  Future<void> _flushAnalyses() =>
+      _writeList(analysesFile, _analyses.values.map((e) => e.toMap()));
+  Future<void> _flushRehearsals() =>
+      _writeList(rehearsalsFile, _rehearsals.values.map((e) => e.toMap()));
+  Future<void> _flushReports() =>
+      _writeList(reportsFile, _reports.values.map((e) => e.toMap()));
+
+  @override
+  Future<Result<List<Presentation>>> loadPresentations() =>
+      _guard(super.loadPresentations);
+
+  @override
+  Future<Result<void>> savePresentation(Presentation presentation) =>
+      _guard(() async {
+        await super.savePresentation(presentation);
+        await _flushPresentations();
+        return const Success(null);
+      });
+
+  @override
+  Future<Result<void>> deletePresentation(String presentationId) =>
+      _guard(() async {
+        await super.deletePresentation(presentationId);
+        await _flushPresentations();
+        await _flushVersions();
+        await _flushAnalyses();
+        await _flushRehearsals();
+        await _flushReports();
+        return const Success(null);
+      });
+
+  @override
+  Future<Result<List<ScriptVersion>>> loadScriptVersions(
+    String presentationId,
+  ) => _guard(() => super.loadScriptVersions(presentationId));
+
+  @override
+  Future<Result<void>> saveScriptVersion(ScriptVersion version) =>
+      _guard(() async {
+        await super.saveScriptVersion(version);
+        await _flushVersions();
+        return const Success(null);
+      });
+
+  @override
+  Future<Result<ScriptAnalysis?>> loadAnalysis(String scriptVersionId) =>
+      _guard(() => super.loadAnalysis(scriptVersionId));
+
+  @override
+  Future<Result<void>> saveAnalysis(ScriptAnalysis analysis) =>
+      _guard(() async {
+        await super.saveAnalysis(analysis);
+        await _flushAnalyses();
+        return const Success(null);
+      });
+
+  @override
+  Future<Result<List<Rehearsal>>> loadRehearsals(String presentationId) =>
+      _guard(() => super.loadRehearsals(presentationId));
+
+  @override
+  Future<Result<void>> saveRehearsal(Rehearsal rehearsal) => _guard(() async {
+    await super.saveRehearsal(rehearsal);
+    await _flushRehearsals();
+    return const Success(null);
+  });
+
+  @override
+  Future<Result<void>> deleteRehearsal(String rehearsalId) => _guard(() async {
+    await super.deleteRehearsal(rehearsalId);
+    await _flushRehearsals();
+    await _flushReports();
+    return const Success(null);
+  });
+
+  @override
+  Future<Result<Report?>> loadReport(String reportId) =>
+      _guard(() => super.loadReport(reportId));
+
+  @override
+  Future<Result<void>> saveReport(Report report) => _guard(() async {
+    await super.saveReport(report);
+    await _flushReports();
+    return const Success(null);
+  });
+
+  @override
+  Future<Result<void>> deleteAll() => _guard(() async {
+    await super.deleteAll();
+    final dir = await _dir();
+    for (final name in allFiles) {
+      final file = File(p.join(dir.path, name));
+      if (await file.exists()) await file.delete();
+    }
+    return const Success(null);
+  });
 }

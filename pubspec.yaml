@@ -40,6 +40,7 @@ dependencies:
   google_fonts: ^8.2.1
   shared_preferences: ^2.5.5
   path_provider: ^2.1.6
+  path: ^1.9.1
   record: ^6.2.1
   just_audio: ^0.10.6
   # 13.x는 Android 플러그인 14.x(AGP 9.0 · Kotlin 2.3 필요)를 끌어와 Flutter 3.41 기본 AGP 8.11과 충돌 → 11.x 유지

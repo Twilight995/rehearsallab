@@ -1,4 +1,5 @@
 import 'package:rehearsallab/core/enum/auth_error_code.dart';
+import 'package:rehearsallab/services/presentation_form_service.dart';
 
 /// 화면 문구 상수. Pen 디자인(rehearsallab.pen)의 텍스트와 글자 단위로 같아야 한다.
 /// 이름 규칙: `<page><Meaning>` (계약서 3.1). 제공사명처럼 런타임 값이 들어가는 문구는 함수.
@@ -115,6 +116,14 @@ class AppStrings {
   static String homeDday(int days) => days == 0 ? 'D-day' : 'D-$days';
   static String homeRehearsalCount(int n) => '리허설 $n회';
 
+  /// 07 헤더 보조 문구: '○○학회 구두발표 · 9월 12일 (금) · 리허설 2회' (날짜 없으면 '날짜 미정')
+  static String homeNextSummary(
+    String title,
+    String dateLabel,
+    int rehearsals,
+  ) => [title, dateLabel, homeRehearsalCount(rehearsals)].join(' · ');
+  static const homeLoadFailed = '발표 목록을 불러오지 못했습니다.';
+
   // ── 08 발표 생성 ──
   static const formTitle = '새 발표';
   static const formTitleLabel = '제목';
@@ -135,6 +144,16 @@ class AppStrings {
   static const formTitleRequired = '제목을 입력하세요.';
   static const formTalkRange = '발표 시간은 1~60분의 정수여야 합니다.';
   static const formQaRange = 'Q&A 시간은 0 이상의 정수여야 합니다.';
+  static const formTitleHint = '○○학회 구두발표';
+  static const formEditTitle = '발표 편집';
+  static const formDatePlaceholder = '날짜 선택';
+  static const formDateClear = '날짜 지우기';
+  static const formSaveFailed = '발표를 저장하지 못했습니다. 다시 시도해 주세요.';
+  static String formError(PresentationFormError code) => switch (code) {
+    PresentationFormError.titleRequired => formTitleRequired,
+    PresentationFormError.talkRange => formTalkRange,
+    PresentationFormError.qaRange => formQaRange,
+  };
 
   // ── 09 설정 ──
   static const settingsTitle = '설정';

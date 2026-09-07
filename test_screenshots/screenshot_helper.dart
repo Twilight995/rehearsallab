@@ -9,8 +9,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:rehearsallab/app/router/app_router.dart';
 import 'package:rehearsallab/app/theme/app_theme.dart';
 import 'package:rehearsallab/features/consent/consent_provider.dart';
+import 'package:rehearsallab/features/presentation/presentation_provider.dart';
 import 'package:rehearsallab/models/provider_config.dart';
 import 'package:rehearsallab/services/consent_service.dart';
+import 'package:rehearsallab/services/local_store_service.dart';
 
 /// 리뷰 첨부용 스크린샷 생성기 (계약서 6.4). `flutter test` 기본 실행에는 포함되지 않으며
 /// `flutter test test_screenshots --update-goldens`로 실행해 `docs/screenshots/<page>_<width>.png`를 만든다.
@@ -49,6 +51,7 @@ Future<void> pumpScreenshotApp(
   double height = 844,
   double scale = 1.0,
   ConsentService? consentService,
+  LocalStoreService? store,
   GoRouter? router,
 }) async {
   tester.view.physicalSize = Size(width, height);
@@ -62,6 +65,7 @@ Future<void> pumpScreenshotApp(
         ),
         if (consentService != null)
           consentServiceProvider.overrideWithValue(consentService),
+        if (store != null) localStoreProvider.overrideWithValue(store),
       ],
       child: MediaQuery(
         data: MediaQueryData(

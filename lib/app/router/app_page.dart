@@ -24,6 +24,9 @@ class RouteParam {
   static const String rehearsalId = 'rehearsalId';
   static const String tab = 'tab';
   static const String step = 'step';
+
+  /// 06 '샘플 발표로 리포트 둘러보기' → 22 sampleMode=true ("샘플 데이터" 배지, 샘플 음성만 재생)
+  static const String sampleMode = 'sampleMode';
 }
 
 /// 라우트 목록 (계약서 3.2). 통합 문서 화면 번호와 1:1.
