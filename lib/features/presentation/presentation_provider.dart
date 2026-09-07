@@ -18,8 +18,13 @@ final localStoreProvider = Provider<LocalStoreService>((ref) {
   return ref.watch(appModeProvider) == AppMode.mock
       ? MemoryLocalStoreService(
           presentations: DemoData.presentations,
-          versions: [DemoData.scriptV1, DemoData.scriptV2, DemoData.scriptV3],
-          analyses: [DemoData.analysisV1],
+          versions: [
+            DemoData.scriptV1,
+            DemoData.scriptV2,
+            DemoData.scriptV3,
+            DemoData.presentation2ScriptV1,
+          ],
+          analyses: [DemoData.analysisV1, DemoData.presentation2Analysis],
           rehearsals: [
             DemoData.rehearsal1,
             DemoData.rehearsal2,

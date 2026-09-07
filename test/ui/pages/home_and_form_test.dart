@@ -130,7 +130,8 @@ void main() {
       expect(find.byType(PresentationCard), findsNWidgets(3));
       expect(find.text(AppStrings.homeSectionSort), findsOneWidget);
       expect(find.text('리허설 3회'), findsOneWidget);
-      expect(find.text('원고 없음'), findsNWidgets(2));
+      expect(find.text('분석 완료'), findsOneWidget);
+      expect(find.text('원고 없음'), findsOneWidget);
       expect(find.text(AppStrings.commonDateTbd), findsOneWidget);
       expect(find.text('D-18'), findsOneWidget);
       expect(

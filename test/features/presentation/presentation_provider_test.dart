@@ -40,7 +40,7 @@ void main() {
       expect(cards[0].stageTone, BadgeTone.info);
       expect(cards[0].rehearsalCount, 3);
       expect(cards[0].matchTrend, [0.74, 0.81, 0.87]);
-      expect(cards[1].stageLabel, '원고 없음');
+      expect(cards[1].stageLabel, '분석 완료');
       expect(cards[2].stageLabel, '원고 없음');
       expect(cards[1].matchTrend, isEmpty);
     });

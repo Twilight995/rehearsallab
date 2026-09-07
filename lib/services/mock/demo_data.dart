@@ -62,6 +62,16 @@ class DemoData {
     ),
   ];
 
+  /// 07 두 번째 카드 "분석 완료"용: 석사 논문 심사에 원고 v1 + 분석 1건 (통합 문서 8장 홈 예시)
+  static final ScriptVersion presentation2ScriptV1 = scriptV1.copyWith(
+    id: 'demo-presentation-2-v1',
+    presentationId: 'demo-presentation-2',
+  );
+  static final ScriptAnalysis presentation2Analysis = analysisV1.copyWith(
+    id: 'demo-presentation-2-a1',
+    scriptVersionId: 'demo-presentation-2-v1',
+  );
+
   /// 원고 v1 (assets/sample/sample_script.txt와 동일한 구조, 5섹션)
   static const String scriptV1Text = '''## 배경
 최근 대규모 언어모델은 학술 발표 준비 과정에서도 활용되고 있으나, 발표자의 실제 전달 방식까지 다루는 도구는 드뭅니다. 발표 전날 피드백을 줄 사람이 없는 대학원생은 원고를 혼자 읽어 보는 것 외에 선택지가 거의 없습니다.
