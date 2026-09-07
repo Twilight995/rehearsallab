@@ -1,3 +1,5 @@
+import 'package:rehearsallab/core/enum/auth_error_code.dart';
+
 /// 화면 문구 상수. Pen 디자인(rehearsallab.pen)의 텍스트와 글자 단위로 같아야 한다.
 /// 이름 규칙: `<page><Meaning>` (계약서 3.1). 제공사명처럼 런타임 값이 들어가는 문구는 함수.
 class AppStrings {
@@ -64,6 +66,24 @@ class AppStrings {
   static const privacyAgreeButton = '동의하고 시작하기';
 
   // ── 04 로그인 · 05 가입 ──
+  static const loginForgotNotice =
+      '프로토타입은 기기 안에서만 계정을 관리해 비밀번호 재설정을 지원하지 않습니다. 새 이메일로 가입해 주세요.';
+  static const authErrorUnknown = '잠시 후 다시 시도해 주세요.';
+  static String authError(AuthErrorCode code) => switch (code) {
+    AuthErrorCode.invalidEmail => '이메일 형식을 확인해 주세요.',
+    AuthErrorCode.passwordTooShort => '비밀번호는 8자 이상이어야 합니다.',
+    AuthErrorCode.passwordMismatch => '비밀번호가 서로 다릅니다.',
+    AuthErrorCode.emailTaken => '이미 가입된 이메일입니다. 로그인해 주세요.',
+    AuthErrorCode.invalidCredentials => '이메일 또는 비밀번호가 맞지 않습니다.',
+    AuthErrorCode.storage =>
+      '계정 정보를 읽거나 저장하지 못했습니다. 앱을 다시 실행해도 같으면 설정에서 데이터를 확인해 주세요.',
+    AuthErrorCode.consentBind => '동의 기록을 저장하지 못해 로그인을 완료할 수 없습니다. 다시 시도해 주세요.',
+    AuthErrorCode.consentCheck => '동의 상태를 확인하지 못해 로그인을 완료할 수 없습니다. 다시 시도해 주세요.',
+  };
+  static const splashLoadFailed = '설정을 불러오지 못했습니다.';
+  static const privacyLoading = '고지 내용을 불러오는 중입니다';
+  static const privacyLoadFailed = '고지 내용을 불러오지 못했습니다. 다시 시도해 주세요.';
+  static const privacyVersionPending = '불러오는 중';
   static const loginTitle = '다시 오셨네요';
   static const loginSubtitle = '이메일과 비밀번호로 로그인하세요.';
   static const authEmailLabel = '이메일';
