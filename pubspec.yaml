@@ -42,7 +42,8 @@ dependencies:
   path_provider: ^2.1.6
   record: ^6.2.1
   just_audio: ^0.10.6
-  permission_handler: ^13.0.2
+  # 13.x는 Android 플러그인 14.x(AGP 9.0 · Kotlin 2.3 필요)를 끌어와 Flutter 3.41 기본 AGP 8.11과 충돌 → 11.x 유지
+  permission_handler: ^11.4.0
   file_picker: ^12.2.0
   http: ^1.6.0
   intl: ^0.20.3
